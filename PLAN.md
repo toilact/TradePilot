@@ -134,9 +134,9 @@ Pipeline end-to-end cho duy nhất mã VCB.
 - [ ] Thay `score_text` stub bằng PhoBERT thật → re-score + rebuild `daily_sentiment`
 
 **1.3 TFT Model**
-- [ ] Feature: MA7/MA20, RSI, MACD, `sentiment_agg`, `news_count`
-- [ ] **Chống leakage:** ngày T chỉ dùng tin `published_at` ≤ 16:00 phiên T; target close T+1
-- [ ] Train TFT global (`pytorch-forecasting`), `stock_id` static categorical
+- [x] **Feature builder** (`backend/features/builder.py`, dùng chung train+inference): MA7/MA20, RSI14, MACD, `sentiment_agg`, `news_count`. Tự tính bằng pandas (không thêm dep).
+- [x] **Chống leakage:** indicator rolling/ewm chỉ nhìn quá khứ→T; label tách riêng (close T+1), hàng cuối=None. Test no-leakage (feature hàng T bất biến khi đổi giá tương lai) + indicator/sentiment/label. Verify thật: VCB 4229 phiên, phân bố nhãn 2256/1000/972.
+- [ ] Train TFT global (`pytorch-forecasting`), `stock_id` static categorical _(Kaggle, ngoài backend)_
 - [ ] **Backtest walk-forward** 90 ngày → accuracy; export checkpoint + `model_version`
 
 **1.4 FastAPI backend** _(khung ✅, cần nối logic)_
