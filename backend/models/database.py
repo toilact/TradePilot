@@ -35,6 +35,10 @@ class Base(DeclarativeBase):
     pass
 
 
+# Postgres: BIGINT identity (autoincrement). SQLite: INTEGER PK để alias rowid (autoincrement).
+BigIntPK = BigInteger().with_variant(Integer, "sqlite")
+
+
 class Stock(Base):
     __tablename__ = "stocks"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -48,7 +52,7 @@ class Stock(Base):
 class PriceHistory(Base):
     __tablename__ = "price_history"
     __table_args__ = (UniqueConstraint("stock_id", "date", name="uq_price_stock_date"),)
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
     stock_id: Mapped[int] = mapped_column(ForeignKey("stocks.id"), index=True)
     date: Mapped[date] = mapped_column(Date, index=True)
     open: Mapped[float] = mapped_column(Float)
@@ -60,7 +64,7 @@ class PriceHistory(Base):
 
 class News(Base):
     __tablename__ = "news"
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
     title: Mapped[str] = mapped_column(Text)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     url: Mapped[str] = mapped_column(Text, unique=True)
@@ -74,7 +78,7 @@ class NewsStock(Base):
 
     __tablename__ = "news_stocks"
     __table_args__ = (UniqueConstraint("news_id", "stock_id", name="uq_news_stock"),)
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
     news_id: Mapped[int] = mapped_column(ForeignKey("news.id"), index=True)
     stock_id: Mapped[int] = mapped_column(ForeignKey("stocks.id"), index=True)
 
@@ -84,7 +88,7 @@ class DailySentiment(Base):
 
     __tablename__ = "daily_sentiment"
     __table_args__ = (UniqueConstraint("stock_id", "date", name="uq_sentiment_stock_date"),)
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
     stock_id: Mapped[int] = mapped_column(ForeignKey("stocks.id"), index=True)
     date: Mapped[date] = mapped_column(Date, index=True)
     sentiment_agg: Mapped[float] = mapped_column(Float, default=0.0)
@@ -98,7 +102,7 @@ class Prediction(Base):
             "stock_id", "prediction_date", "model_version", name="uq_pred_stock_date_ver"
         ),
     )
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
     stock_id: Mapped[int] = mapped_column(ForeignKey("stocks.id"), index=True)
     prediction_date: Mapped[date] = mapped_column(Date, index=True)  # ngày T
     target_date: Mapped[date] = mapped_column(Date)  # T+1
@@ -112,7 +116,7 @@ class ActualResult(Base):
 
     __tablename__ = "actual_results"
     __table_args__ = (UniqueConstraint("stock_id", "date", name="uq_actual_stock_date"),)
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
     stock_id: Mapped[int] = mapped_column(ForeignKey("stocks.id"), index=True)
     date: Mapped[date] = mapped_column(Date, index=True)
     label: Mapped[str] = mapped_column(String(10))
@@ -130,7 +134,7 @@ class User(Base):
 class Watchlist(Base):
     __tablename__ = "watchlist"
     __table_args__ = (UniqueConstraint("user_id", "stock_id", name="uq_watchlist_user_stock"),)
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     stock_id: Mapped[int] = mapped_column(ForeignKey("stocks.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

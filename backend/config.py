@@ -15,5 +15,17 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
 
+    @property
+    def sync_database_url(self) -> str:
+        """URL sync (psycopg2) cho Alembic — derive từ database_url async (asyncpg)."""
+        url = self.database_url
+        if url.startswith("postgresql+asyncpg://"):
+            return url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        if url.startswith("sqlite+aiosqlite://"):  # dùng cho autogen migration trên sqlite
+            return url.replace("sqlite+aiosqlite://", "sqlite://", 1)
+        return url
+
 
 settings = Settings()
