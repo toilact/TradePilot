@@ -125,7 +125,7 @@ Pipeline end-to-end cho duy nhất mã VCB.
 **1.1 Data pipeline**
 - [x] Setup Alembic → migration tạo 9 bảng trên Supabase
 - [x] `vnstock` → OHLCV VCB → `price_history` (upsert theo stock_id+date, idempotent)
-- [x] Crawler CafeF lấy tin về VCB → `news` + `news_stocks` (lịch sự + idempotent, content=NULL). FireAnt hoãn (API cần token, trang client-side render).
+- [x] Crawler CafeF → `news` + `news_stocks` (lịch sự + idempotent, content=NULL). 2 nguồn: trang theo mã + RSS chuyên mục map về mã (match symbol/tên, N-N). 118 bài, 6 mã seed. FireAnt hoãn (API cần token).
 
 **1.2 Sentiment model**
 - [ ] Auto-label ~500 câu bằng LLM → review mẫu sai
