@@ -9,7 +9,9 @@ Xây dựng web app dự đoán giá cổ phiếu Việt Nam (tăng/giảm/đi n
 ## Tiến độ (2026-06-09)
 - ✅ **Khung backend** (FastAPI chạy, 9 bảng ORM + constraints, labeling ±1% + test, Python 3.12) — service/api còn stub.
 - ✅ **Khung frontend** (Next.js 15, 4 trang, build sạch, design "Ethereal Glass" + bảng màu chốt ở ADR 0001) — dùng mock data.
-- 🔜 **Đang làm:** Phase 1.1 `price_fetcher` (Alembic → tạo bảng Supabase → vnstock giá VCB).
+- ✅ **Phase 1.1 — giá:** Alembic setup → migration tạo 9 bảng chạy thật trên Supabase → `price_fetcher` (vnstock) lấy OHLCV VCB → `price_history` (upsert idempotent). Có `stock_seed`, `db/upsert` đa dialect, test transform/validate/idempotent.
+- ✅ **Phase 1.1 — tin:** crawler CafeF lấy tin VCB → `news` + `news_stocks` (lịch sự: robots.txt + delay + UA, idempotent theo url, content=NULL). 20 bài VCB đã vào Supabase. FireAnt hoãn (cần token API).
+- 🔜 **Đang làm:** Phase 1.2 — sentiment (auto-label LLM → fine-tune PhoBERT → chấm `news.sentiment_score` → tổng hợp `daily_sentiment`).
 - Chi tiết trạng thái: xem `CONTEXT.md`.
 
 ## Định nghĩa nhãn (quan trọng — nền tảng của toàn pipeline)
@@ -121,9 +123,9 @@ watchlist (id, user_id, stock_id, created_at)
 Pipeline end-to-end cho duy nhất mã VCB.
 
 **1.1 Data pipeline**
-- [ ] Setup Alembic → migration tạo 9 bảng trên Supabase
-- [ ] `vnstock` → OHLCV VCB (5 năm) → `price_history` (upsert theo stock_id+date)
-- [ ] Crawler CafeF + FireAnt lấy tin/posts về VCB → `news` + `news_stocks`
+- [x] Setup Alembic → migration tạo 9 bảng trên Supabase
+- [x] `vnstock` → OHLCV VCB → `price_history` (upsert theo stock_id+date, idempotent)
+- [x] Crawler CafeF → `news` + `news_stocks` (lịch sự + idempotent, content=NULL). 2 nguồn: trang theo mã + RSS chuyên mục map về mã (match symbol/tên, N-N). 118 bài, 6 mã seed. FireAnt hoãn (API cần token).
 
 **1.2 Sentiment model**
 - [ ] Auto-label ~500 câu bằng LLM → review mẫu sai

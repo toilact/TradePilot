@@ -27,18 +27,22 @@ Web dự đoán cổ phiếu Việt Nam: với mỗi mã, dự đoán phiên T+1
 
 ## Trạng thái hiện tại (cập nhật 2026-06-09)
 
-**Giai đoạn: SCAFFOLD xong (backend + frontend), bắt đầu logic Phase 1.1.**
+**Giai đoạn: Phase 1.1 — mắt xích giá đã chạy thật (vnstock → Supabase). Tiếp: crawler tin.**
 
 Đã có:
 - ✅ `git init` (branch `main`, **chưa commit**, chưa có GitHub remote) + `.gitignore`
 - ✅ Tài liệu: `PLAN.md`, `CONTEXT.md`, root + 3 module `CLAUDE.md`/`SKILL.md`, `docs/agents/`, **`docs/adr/0001`** (design system)
 - ✅ **Backend khung** (`backend/`): FastAPI chạy được (`/health` OK), 9 bảng ORM (SQLAlchemy 2.0 async, có unique constraints), `labeling.py` (nhãn ±1%) + test pass, service/api đều là stub có TODO. **Python pin 3.12** (`.python-version`); `uv`+`ruff` sạch.
 - ✅ **Frontend khung** (`frontend/`): Next.js 15 + Tailwind, 4 trang (chủ/chi tiết/accuracy/watchlist) + components, build sạch. Dùng **mock data** (`lib/api.ts` cờ `USE_MOCK=true`). Design "Ethereal Glass" + bảng màu đã chốt (xem ADR 0001).
+- ✅ **Alembic** setup (`alembic.ini`, `migrations/env.py` lấy URL từ settings) + migration `f6e9b2c93653` (9 bảng) **đã chạy thật trên Supabase**.
+- ✅ **`price_fetcher`** (vnstock `vci` → OHLCV) + `stock_seed` (metadata mã) + `db/upsert` (đa dialect PG/SQLite, idempotent theo unique constraint). Đã fetch giá VCB vào `price_history` thật. Test: transform/validate/idempotent (SQLite in-memory).
+- ✅ **`.env` thật** đã cấu hình (DATABASE_URL asyncpg → Supabase), pipeline giá verify chạy được.
 
 Chưa có:
-- ❌ Schema chưa tạo trên Supabase thật (sẽ dùng **Alembic** — chưa setup)
-- ❌ Chưa có logic thật: crawler, price_fetcher, sentiment, TFT — đều `NotImplementedError`
-- ❌ Chưa `.env` thật (mới có `.env.example`), chưa GitHub remote, chưa CI, chưa ml notebooks
+- ❌ Logic còn lại: crawler (CafeF/FireAnt), sentiment (PhoBERT), TFT — vẫn stub `NotImplementedError`
+- ❌ API chưa nối DB thật (Phase 1.4), frontend còn `USE_MOCK=true`
+- ❌ Chưa commit, chưa GitHub remote, chưa CI, chưa ml notebooks
+- ⚠️ Lưu ý debt nhỏ (xem review): `validate()` chưa chặn close/open ngoài [low,high]; `sync_database_url` chưa có test.
 
 ## Quyết định đã chốt (đừng hỏi lại)
 
@@ -51,8 +55,8 @@ Thị trường VN · nhãn 3-class ±1% T+1 · OHLCV + sentiment · `vnstock` +
 
 ## Bước tiếp theo gợi ý (theo thứ tự)
 
-1. **Phase 1.1 — `price_fetcher`:** setup Alembic → tạo 9 bảng trên Supabase → tích hợp `vnstock` lấy giá VCB thật → lưu `price_history`. Mắt xích dữ liệu thật đầu tiên.
-2. Crawler CafeF/FireAnt cho VCB (+ HTML fixture để test parser).
+1. ~~Phase 1.1 `price_fetcher`~~ ✅ xong (giá VCB đã vào Supabase).
+2. **Crawler CafeF/FireAnt cho VCB** (+ HTML fixture để test parser) → `news` + `news_stocks`. Crawl lịch sự (robots.txt, rate-limit, UA), chỉ lưu link + metadata.
 3. Sentiment (Phase 1.2) → TFT (Phase 1.3) → nối API (Phase 1.4) → đổi frontend `USE_MOCK=false`.
 4. Sau khi có data thật: commit + tạo GitHub remote + CI.
 
