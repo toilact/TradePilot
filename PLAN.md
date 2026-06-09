@@ -136,8 +136,8 @@ Pipeline end-to-end cho duy nhất mã VCB.
 **1.3 TFT Model**
 - [x] **Feature builder** (`backend/features/builder.py`, dùng chung train+inference): MA7/MA20, RSI14, MACD, `sentiment_agg`, `news_count`. Tự tính bằng pandas (không thêm dep).
 - [x] **Chống leakage:** indicator rolling/ewm chỉ nhìn quá khứ→T; label tách riêng (close T+1), hàng cuối=None. Test no-leakage (feature hàng T bất biến khi đổi giá tương lai) + indicator/sentiment/label. Verify thật: VCB 4229 phiên, phân bố nhãn 2256/1000/972.
-- [ ] Train TFT global (`pytorch-forecasting`), `stock_id` static categorical _(Kaggle, ngoài backend)_
-- [ ] **Backtest walk-forward** 90 ngày → accuracy; export checkpoint + `model_version`
+- [x] **Notebook TFT global** (`ml/notebooks/03_tft_training.py`): ghép 30 mã VN30 (~96833 phiên) → panel, `stock_id` static, split THỜI GIAN (train<2024/val 2024/test≥2025), baseline + confusion matrix + per-class F1, export checkpoint + `model_version`. Smoke-test (panel+split+baseline) pass; **baseline thực tế ~53%** (không phải 33%). Dep ML chỉ ở `ml/requirements.txt`.
+- [ ] **Chạy train thật trên Kaggle GPU** (`RUN_TRAINING=True`) → xác minh API classification pytorch-forecasting → accuracy out-of-sample > 53% → export checkpoint thật cho backend inference.
 
 **1.4 FastAPI backend** _(khung ✅, cần nối logic)_
 - [x] Khung routes `/api/predictions`, `/api/stocks/{symbol}/history`, `/api/accuracy` (stub) + scheduler khung
