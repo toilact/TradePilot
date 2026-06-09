@@ -30,3 +30,7 @@ out/
 .DS_Store
 .idea/
 *.log
+
+# Hướng dẫn nội bộ cho Claude (không publish lên GitHub)
+CLAUDE.md
+**/CLAUDE.md
