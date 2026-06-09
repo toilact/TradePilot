@@ -128,9 +128,10 @@ Pipeline end-to-end cho duy nhất mã VCB.
 - [x] Crawler CafeF → `news` + `news_stocks` (lịch sự + idempotent, content=NULL). 2 nguồn: trang theo mã + RSS chuyên mục map về mã (match symbol/tên, N-N). 118 bài, 6 mã seed. FireAnt hoãn (API cần token).
 
 **1.2 Sentiment model**
-- [ ] Auto-label ~500 câu bằng LLM → review mẫu sai
-- [ ] Fine-tune `vinai/phobert-base` trên Kaggle → `ml/artifacts/phobert_sentiment/`
-- [ ] Inference tin VCB → `news.sentiment_score` → tổng hợp `daily_sentiment`
+- [x] **Mắt xích backend (C):** `score_news` + `build_daily_sentiment` (gộp theo ngày/mã, idempotent, ngày-không-tin=0) + test. `score_text` STUB trả 0.0 — chờ PhoBERT. Verify: VCB 17 ngày, FPT 13 ngày `daily_sentiment`.
+- [ ] Auto-label ~500 câu bằng LLM → review mẫu sai (A)
+- [ ] Fine-tune `vinai/phobert-base` trên Kaggle → `ml/artifacts/phobert_sentiment/` (B)
+- [ ] Thay `score_text` stub bằng PhoBERT thật → re-score + rebuild `daily_sentiment`
 
 **1.3 TFT Model**
 - [ ] Feature: MA7/MA20, RSI, MACD, `sentiment_agg`, `news_count`
