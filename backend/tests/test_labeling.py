@@ -14,9 +14,9 @@ from services.labeling import (
 @pytest.mark.parametrize(
     "pct,expected",
     [
-        (0.02, LABEL_UP),     # +2% → Tăng
-        (0.0101, LABEL_UP),   # ngay trên ngưỡng
-        (0.01, LABEL_FLAT),   # đúng +1% → Đi ngang (biên không tính)
+        (0.02, LABEL_UP),  # +2% → Tăng
+        (0.0101, LABEL_UP),  # ngay trên ngưỡng
+        (0.01, LABEL_FLAT),  # đúng +1% → Đi ngang (biên không tính)
         (0.0, LABEL_FLAT),
         (-0.01, LABEL_FLAT),  # đúng -1% → Đi ngang
         (-0.0101, LABEL_DOWN),

@@ -60,9 +60,7 @@ async def main() -> None:
     from models.database import Prediction, SessionLocal, Stock
 
     async with SessionLocal() as session:
-        stock_ids = dict(
-            (await session.execute(select(Stock.symbol, Stock.id))).all()
-        )
+        stock_ids = dict((await session.execute(select(Stock.symbol, Stock.id))).all())
 
         rows: list[dict] = []
         for symbol in VN30:

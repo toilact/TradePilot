@@ -31,9 +31,16 @@ MODEL_PATH = "../ml/artifacts/phobert_sentiment"
 def score_text(text: str) -> float:
     """Sentiment score [-1, 1] cho 1 đoạn tin.
 
-    STUB Phase 1.2: trả 0.0 (trung tính) cho tới khi PhoBERT fine-tuned sẵn sàng
-    (Phase 1.2-B, train Kaggle → ml/artifacts/phobert_sentiment/). Khi thay model thật,
-    chỉ cần đổi thân hàm này — score_news/build_daily_sentiment giữ nguyên.
+    STUB Phase 1.2: trả 0.0 (trung tính) cho tới khi PhoBERT fine-tuned sẵn sàng.
+    Khi thay model thật, chỉ cần đổi thân hàm này — score_news/build_daily_sentiment giữ nguyên.
+
+    CÁCH THAY (sau khi có checkpoint từ ml/notebooks/02_sentiment_finetune.py):
+      - Checkpoint ở MODEL_PATH (save_pretrained: model + tokenizer).
+      - Load 1 lần lazy (module-level): AutoTokenizer + AutoModelForSequenceClassification.
+      - Map id→điểm: notebook dùng LABELS=["neg","neu","pos"] (neg=0,neu=1,pos=2) →
+        [-1, 0, +1]. Trả argmax→map, hoặc kỳ vọng Σ prob_i*score_i cho mượt.
+        Tham chiếu services/sentiment_label.label_to_score.
+      - Thêm dep transformers+torch vào backend CHỈ khi bật model thật (hiện backend chưa có torch).
     """
     return 0.0
 

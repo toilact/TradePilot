@@ -25,15 +25,35 @@ async def _seed(factory):
         sid = stock.id
         s.add_all(
             [
-                PriceHistory(stock_id=sid, date=date(2026, 6, 8), open=60, high=61,
-                             low=59, close=60.0, volume=1000),
-                PriceHistory(stock_id=sid, date=date(2026, 6, 9), open=60, high=62,
-                             low=60, close=61.2, volume=1200),
-                DailySentiment(stock_id=sid, date=date(2026, 6, 9),
-                               sentiment_agg=0.3, news_count=2),
-                Prediction(stock_id=sid, prediction_date=date(2026, 6, 9),
-                           target_date=date(2026, 6, 10), label="tang", confidence=0.7,
-                           model_version="stub_v0"),
+                PriceHistory(
+                    stock_id=sid,
+                    date=date(2026, 6, 8),
+                    open=60,
+                    high=61,
+                    low=59,
+                    close=60.0,
+                    volume=1000,
+                ),
+                PriceHistory(
+                    stock_id=sid,
+                    date=date(2026, 6, 9),
+                    open=60,
+                    high=62,
+                    low=60,
+                    close=61.2,
+                    volume=1200,
+                ),
+                DailySentiment(
+                    stock_id=sid, date=date(2026, 6, 9), sentiment_agg=0.3, news_count=2
+                ),
+                Prediction(
+                    stock_id=sid,
+                    prediction_date=date(2026, 6, 9),
+                    target_date=date(2026, 6, 10),
+                    label="tang",
+                    confidence=0.7,
+                    model_version="stub_v0",
+                ),
             ]
         )
         await s.commit()
@@ -82,15 +102,35 @@ async def test_list_predictions_multi_stock_no_mixup(session_factory):
         await s.flush()
         s.add_all(
             [
-                PriceHistory(stock_id=fpt.id, date=date(2026, 6, 8), open=100, high=101,
-                             low=99, close=100.0, volume=500),
-                PriceHistory(stock_id=fpt.id, date=date(2026, 6, 9), open=100, high=105,
-                             low=100, close=110.0, volume=600),  # +10%
-                DailySentiment(stock_id=fpt.id, date=date(2026, 6, 9),
-                               sentiment_agg=-0.5, news_count=1),
-                Prediction(stock_id=fpt.id, prediction_date=date(2026, 6, 9),
-                           target_date=date(2026, 6, 10), label="giam", confidence=0.6,
-                           model_version="stub_v0"),
+                PriceHistory(
+                    stock_id=fpt.id,
+                    date=date(2026, 6, 8),
+                    open=100,
+                    high=101,
+                    low=99,
+                    close=100.0,
+                    volume=500,
+                ),
+                PriceHistory(
+                    stock_id=fpt.id,
+                    date=date(2026, 6, 9),
+                    open=100,
+                    high=105,
+                    low=100,
+                    close=110.0,
+                    volume=600,
+                ),  # +10%
+                DailySentiment(
+                    stock_id=fpt.id, date=date(2026, 6, 9), sentiment_agg=-0.5, news_count=1
+                ),
+                Prediction(
+                    stock_id=fpt.id,
+                    prediction_date=date(2026, 6, 9),
+                    target_date=date(2026, 6, 10),
+                    label="giam",
+                    confidence=0.6,
+                    model_version="stub_v0",
+                ),
             ]
         )
         await s.commit()

@@ -1,0 +1,71 @@
+{
+  "model_version": "tft_v1",
+  "baseline": {
+    "majority_class": "di_ngang",
+    "acc_majority_on_test": 0.5039,
+    "acc_always_flat_on_test": 0.5039,
+    "test_label_dist": {
+      "di_ngang": 0.5039,
+      "tang": 0.2545,
+      "giam": 0.2416
+    }
+  },
+  "tft": {
+    "accuracy": 0.479,
+    "labels_order": [
+      "di_ngang",
+      "giam",
+      "tang"
+    ],
+    "confusion_matrix": [
+      [
+        4483,
+        0,
+        0
+      ],
+      [
+        2394,
+        0,
+        0
+      ],
+      [
+        2483,
+        0,
+        0
+      ]
+    ],
+    "per_class": {
+      "di_ngang": {
+        "precision": 0.4789529914529915,
+        "recall": 1.0,
+        "f1-score": 0.6476919742830312,
+        "support": 4483.0
+      },
+      "giam": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 2394.0
+      },
+      "tang": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 2483.0
+      },
+      "accuracy": 0.4789529914529915,
+      "macro avg": {
+        "precision": 0.15965099715099715,
+        "recall": 0.3333333333333333,
+        "f1-score": 0.2158973247610104,
+        "support": 9360.0
+      },
+      "weighted avg": {
+        "precision": 0.22939596802176931,
+        "recall": 0.4789529914529915,
+        "f1-score": 0.3102140086229518,
+        "support": 9360.0
+      }
+    }
+  }
+}
