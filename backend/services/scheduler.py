@@ -5,7 +5,11 @@ Thứ tự: price_fetcher → crawler → sentiment(score) → build_daily_senti
         → fill actual_results khi có close T+1.
 
 Bất biến chống leakage: inference ngày T chỉ dùng tin published_at ≤ 16:00 phiên T.
-TODO Phase 1.4: nối các service + alert khi job fail hoặc crawl 0 tin.
+
+Mắt xích đã có: `services.actual_results.fill_actual_results(session)` (chấm nhãn thực tế).
+TODO: nối price_fetcher/crawler/sentiment/inference + gọi fill_actual_results ở cuối +
+alert khi job fail hoặc crawl 0 tin. Khi wire xong, bỏ NotImplementedError + start scheduler
+trong main.py lifespan.
 """
 
 from __future__ import annotations
