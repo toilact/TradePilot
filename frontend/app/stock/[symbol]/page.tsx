@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getHistory, getNews, getPrediction } from "@/lib/api";
-import { MOCK_PREDICTIONS } from "@/lib/mock";
+import { getHistory, getNews, getPrediction, getPredictions } from "@/lib/api";
 import { Reveal } from "@/components/reveal";
 import { PredictionBadge } from "@/components/prediction-badge";
 import { PriceChart } from "@/components/price-chart";
@@ -9,8 +8,9 @@ import { StatCard } from "@/components/stat-card";
 import { Disclaimer } from "@/components/disclaimer";
 import { changeColor, fmtConfidence, fmtPct, fmtPrice } from "@/lib/format";
 
-export function generateStaticParams() {
-  return MOCK_PREDICTIONS.map((p) => ({ symbol: p.symbol }));
+export async function generateStaticParams() {
+  const predictions = await getPredictions();
+  return predictions.map((p) => ({ symbol: p.symbol }));
 }
 
 export default async function StockPage({
