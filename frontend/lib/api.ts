@@ -10,7 +10,7 @@ import {
 import type { AccuracySummary, NewsItem, Prediction, PricePoint } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const USE_MOCK = true; // TODO Phase 1.4: chuyển sang false khi API trả dữ liệu thật
+const USE_MOCK = false; // Phase 1.4: dùng API thật. getNews vẫn fallback mock (chưa có endpoint tin).
 
 export async function getPredictions(): Promise<Prediction[]> {
   if (USE_MOCK) return MOCK_PREDICTIONS;
@@ -24,6 +24,7 @@ export async function getPrediction(symbol: string): Promise<Prediction | undefi
   const res = await fetch(`${API_URL}/api/predictions?symbol=${symbol}`, {
     next: { revalidate: 300 },
   });
+  if (res.status === 404) return undefined; // mã không tồn tại → trang gọi notFound()
   if (!res.ok) throw new Error("Không tải được dự đoán");
   return res.json();
 }
