@@ -32,6 +32,9 @@ out/
 .idea/
 *.log
 
-# Hướng dẫn nội bộ cho Claude (không publish lên GitHub)
+# Tài liệu nội bộ (không publish lên GitHub) — giữ local để làm việc
 CLAUDE.md
 **/CLAUDE.md
+CONTEXT.md
+PLAN.md
+**/SKILL.md
