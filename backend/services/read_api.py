@@ -64,7 +64,9 @@ async def _close_and_change(session: AsyncSession, stock_id: int) -> tuple[float
                 .order_by(PriceHistory.date.desc())
                 .limit(2)
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     ]
     return _close(closes), _change_pct(closes)
 
@@ -102,35 +104,44 @@ async def list_predictions(session: AsyncSession) -> list[dict]:
     cho mọi mã trong 1 lượt, dùng window function row_number().
     """
     stocks = (
-        await session.execute(
-            select(Stock).where(Stock.is_active.is_(True)).order_by(Stock.symbol)
+        (
+            await session.execute(
+                select(Stock).where(Stock.is_active.is_(True)).order_by(Stock.symbol)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not stocks:
         return []
     stock_ids = [s.id for s in stocks]
 
     # --- 1 query: prediction mới nhất mỗi mã ---
-    pred_rn = func.row_number().over(
-        partition_by=Prediction.stock_id, order_by=Prediction.prediction_date.desc()
-    ).label("rn")
+    pred_rn = (
+        func.row_number()
+        .over(partition_by=Prediction.stock_id, order_by=Prediction.prediction_date.desc())
+        .label("rn")
+    )
     pred_sub = (
         select(
-            Prediction.stock_id, Prediction.label, Prediction.confidence,
-            Prediction.model_version, pred_rn,
+            Prediction.stock_id,
+            Prediction.label,
+            Prediction.confidence,
+            Prediction.model_version,
+            pred_rn,
         )
         .where(Prediction.stock_id.in_(stock_ids))
         .subquery()
     )
-    pred_rows = (
-        await session.execute(select(pred_sub).where(pred_sub.c.rn == 1))
-    ).all()
+    pred_rows = (await session.execute(select(pred_sub).where(pred_sub.c.rn == 1))).all()
     pred_by_stock = {r.stock_id: r for r in pred_rows}
 
     # --- 1 query: 2 giá gần nhất mỗi mã (để tính close + changePct) ---
-    price_rn = func.row_number().over(
-        partition_by=PriceHistory.stock_id, order_by=PriceHistory.date.desc()
-    ).label("rn")
+    price_rn = (
+        func.row_number()
+        .over(partition_by=PriceHistory.stock_id, order_by=PriceHistory.date.desc())
+        .label("rn")
+    )
     price_sub = (
         select(PriceHistory.stock_id, PriceHistory.close, price_rn)
         .where(PriceHistory.stock_id.in_(stock_ids))
@@ -148,17 +159,17 @@ async def list_predictions(session: AsyncSession) -> list[dict]:
         closes_by_stock.setdefault(r.stock_id, []).append(float(r.close))
 
     # --- 1 query: sentiment mới nhất mỗi mã ---
-    sent_rn = func.row_number().over(
-        partition_by=DailySentiment.stock_id, order_by=DailySentiment.date.desc()
-    ).label("rn")
+    sent_rn = (
+        func.row_number()
+        .over(partition_by=DailySentiment.stock_id, order_by=DailySentiment.date.desc())
+        .label("rn")
+    )
     sent_sub = (
         select(DailySentiment.stock_id, DailySentiment.sentiment_agg, sent_rn)
         .where(DailySentiment.stock_id.in_(stock_ids))
         .subquery()
     )
-    sent_rows = (
-        await session.execute(select(sent_sub).where(sent_sub.c.rn == 1))
-    ).all()
+    sent_rows = (await session.execute(select(sent_sub).where(sent_sub.c.rn == 1))).all()
     sent_by_stock = {r.stock_id: float(r.sentiment_agg) for r in sent_rows}
 
     out = []
@@ -250,9 +261,7 @@ async def get_accuracy(session: AsyncSession) -> dict:
         )
     ).all()
     actuals = (
-        await session.execute(
-            select(ActualResult.stock_id, ActualResult.date, ActualResult.label)
-        )
+        await session.execute(select(ActualResult.stock_id, ActualResult.date, ActualResult.label))
     ).all()
     actual_map = {(sid, d): lbl for sid, d, lbl in actuals}
 
@@ -283,8 +292,11 @@ async def get_accuracy(session: AsyncSession) -> dict:
         by_label[plabel].append(correct)
     by_label_acc = {
         lbl: round(sum(v) / len(v), 4) if v else 0.0
-        for lbl, v in (("tang", by_label["tang"]), ("giam", by_label["giam"]),
-                       ("di_ngang", by_label["di_ngang"]))
+        for lbl, v in (
+            ("tang", by_label["tang"]),
+            ("giam", by_label["giam"]),
+            ("di_ngang", by_label["di_ngang"]),
+        )
     }
 
     # rolling accuracy theo ngày (series)
@@ -295,11 +307,7 @@ async def get_accuracy(session: AsyncSession) -> dict:
         {"date": d.isoformat(), "accuracy": round(sum(v) / len(v), 4)}
         for d, v in sorted(per_day.items())
     ]
-    last30 = (
-        round(sum(c for _, c, _ in matched[-30:]) / len(matched[-30:]), 4)
-        if matched
-        else 0.0
-    )
+    last30 = round(sum(c for _, c, _ in matched[-30:]) / len(matched[-30:]), 4) if matched else 0.0
 
     return {
         "overall": round(overall, 4),

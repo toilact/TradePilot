@@ -25,17 +25,16 @@ async def main() -> None:
     from services.actual_results import fill_actual_results
 
     async with SessionLocal() as session:
-        distinct_sub = (
-            select(Prediction.stock_id, Prediction.prediction_date).distinct().subquery()
-        )
+        distinct_sub = select(Prediction.stock_id, Prediction.prediction_date).distinct().subquery()
         total_pred = (
             await session.execute(select(func.count()).select_from(distinct_sub))
         ).scalar_one()
         n = await fill_actual_results(session)
 
     print(f"Đã ghi/cập nhật {n} actual_results.")
-    print(f"(Tổng {total_pred} cặp (mã, ngày) có prediction; "
-          "phần chưa chấm = chưa có phiên kế tiếp.)")
+    print(
+        f"(Tổng {total_pred} cặp (mã, ngày) có prediction; phần chưa chấm = chưa có phiên kế tiếp.)"
+    )
 
 
 if __name__ == "__main__":

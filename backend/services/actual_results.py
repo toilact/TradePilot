@@ -31,9 +31,7 @@ async def fill_actual_results(session: AsyncSession) -> int:
     rồi tìm phiên kế tiếp in-memory bằng bisect trên list ngày sắp tăng dần.
     """
     targets = (
-        await session.execute(
-            select(Prediction.stock_id, Prediction.prediction_date).distinct()
-        )
+        await session.execute(select(Prediction.stock_id, Prediction.prediction_date).distinct())
     ).all()
     if not targets:
         return 0

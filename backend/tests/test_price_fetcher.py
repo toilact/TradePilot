@@ -91,8 +91,10 @@ async def test_fetch_idempotent_and_updates(session_factory, monkeypatch):
         n_price = (await s.execute(select(func.count()).select_from(PriceHistory))).scalar_one()
         n_stock = (await s.execute(select(func.count()).select_from(Stock))).scalar_one()
         first_close = (
-            await s.execute(select(PriceHistory.close).order_by(PriceHistory.date))
-        ).scalars().first()
+            (await s.execute(select(PriceHistory.close).order_by(PriceHistory.date)))
+            .scalars()
+            .first()
+        )
 
     assert n_price == 2  # idempotent — không nhân đôi
     assert n_stock == 1  # seed_stock cũng idempotent theo symbol
