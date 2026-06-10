@@ -1,0 +1,84 @@
+{
+  "model_version": "tft_v2",
+  "baseline": {
+    "majority_class": "di_ngang",
+    "acc_majority_on_test": 0.5039,
+    "acc_always_flat_on_test": 0.5039,
+    "test_label_dist": {
+      "di_ngang": 0.5039,
+      "tang": 0.2545,
+      "giam": 0.2416
+    }
+  },
+  "pass_criteria": {
+    "macro_f1_min": 0.36,
+    "all_classes_nonzero": true,
+    "accuracy_is_reference_only": true,
+    "note": "feature giá thuần có trần — chấp nhận acc < baseline; mục tiêu hết collapse."
+  },
+  "changes_vs_v1": [
+    "CrossEntropy class weight nghịch đảo tần suất train-only, power=1.0",
+    "tripwire pred-dist > 80% → fallback CÁCH C oversample"
+  ],
+  "train_method": "C:oversample",
+  "tft": {
+    "accuracy": 0.478,
+    "labels_order": [
+      "di_ngang",
+      "giam",
+      "tang"
+    ],
+    "confusion_matrix": [
+      [
+        4454,
+        0,
+        29
+      ],
+      [
+        2377,
+        0,
+        17
+      ],
+      [
+        2463,
+        0,
+        20
+      ]
+    ],
+    "per_class": {
+      "di_ngang": {
+        "precision": 0.4792339143533462,
+        "recall": 0.9935311175552086,
+        "f1-score": 0.6465848878565725,
+        "support": 4483.0
+      },
+      "giam": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1-score": 0.0,
+        "support": 2394.0
+      },
+      "tang": {
+        "precision": 0.30303030303030304,
+        "recall": 0.008054772452678213,
+        "f1-score": 0.01569242840329541,
+        "support": 2483.0
+      },
+      "accuracy": 0.477991452991453,
+      "macro avg": {
+        "precision": 0.2607547391278831,
+        "recall": 0.3338619633359623,
+        "f1-score": 0.220759105419956,
+        "support": 9360.0
+      },
+      "weighted avg": {
+        "precision": 0.3099177222724673,
+        "recall": 0.477991452991453,
+        "f1-score": 0.3138466188019655,
+        "support": 9360.0
+      }
+    },
+    "macro_f1": 0.2208
+  },
+  "passed": false
+}

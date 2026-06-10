@@ -19,6 +19,7 @@ ml/artifacts/**/*.pt
 ml/artifacts/**/*.bin
 ml/artifacts/**/*.safetensors
 ml/artifacts/**/*.ckpt
+ml/artifacts/**/*.txt
 .ipynb_checkpoints/
 
 # Node / Next.js
@@ -37,7 +38,11 @@ CLAUDE.md
 **/CLAUDE.md
 CONTEXT.md
 PLAN.md
+TICKLIST.md
 **/SKILL.md
+
+# Build artifacts
+*.tsbuildinfo
 
 # Tooling nội bộ (skills library, code index, repo tạm) — không publish
 .ecc/

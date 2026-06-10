@@ -7,5 +7,7 @@ pytorch-forecasting>=1.0
 transformers>=4.40  # fine-tune PhoBERT (notebook 02_sentiment_finetune)
 pandas>=2.0
 scikit-learn>=1.3
+lightgbm>=4.0  # model thật lgbm_v3 (notebook 04 — train LOCAL vài giây, không cần Kaggle; macOS cần libomp)
+scipy>=1.10  # temperature scaling (notebook 04) — dep trực tiếp, không dựa transitively qua sklearn
 # Đọc feature từ backend builder cần các dep backend khi chạy ngoài Kaggle (local smoke-test):
 #   sqlalchemy[asyncio], asyncpg, pydantic-settings — đã có trong backend/ env.
