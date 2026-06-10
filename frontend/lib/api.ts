@@ -10,7 +10,9 @@ import {
 import type { AccuracySummary, NewsItem, Prediction, PricePoint } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const USE_MOCK = false; // Phase 1.4: dùng API thật. getNews vẫn fallback mock (chưa có endpoint tin).
+// Phase 1.4: dùng API thật. getNews vẫn fallback mock (chưa có endpoint tin).
+// CI build không có backend → NEXT_PUBLIC_CI_BUILD=1 buộc dùng mock để `next build` xanh.
+const USE_MOCK = process.env.NEXT_PUBLIC_CI_BUILD === "1";
 
 export async function getPredictions(): Promise<Prediction[]> {
   if (USE_MOCK) return MOCK_PREDICTIONS;
