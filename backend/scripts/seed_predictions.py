@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -27,6 +27,15 @@ VN30 = [
     "MBB", "MSN", "MWG", "PLX", "POW", "SAB", "SHB", "SSB", "SSI", "STB",
     "TCB", "TPB", "VCB", "VHM", "VIB", "VIC", "VJC", "VNM", "VPB", "VRE",
 ]  # fmt: skip
+
+
+def next_trading_day(d: date) -> date:
+    """Phiên giao dịch kế tiếp (T+1) — bỏ cuối tuần. KHÔNG bỏ lễ (xấp xỉ; accuracy job mới
+    khớp với phiên THẬT có trong price_history, không phụ thuộc giá trị này — xem ActualResult)."""
+    nxt = d + timedelta(days=1)
+    while nxt.weekday() >= 5:  # 5=thứ Bảy, 6=Chủ nhật
+        nxt += timedelta(days=1)
+    return nxt
 
 
 def stub_label(ma7: float, ma20: float) -> str:
@@ -72,7 +81,7 @@ async def main() -> None:
                 {
                     "stock_id": stock_id,
                     "prediction_date": pred_date,
-                    "target_date": pred_date + timedelta(days=1),  # T+1 (xấp xỉ, bỏ qua nghỉ lễ)
+                    "target_date": next_trading_day(pred_date),  # T+1 phiên (bỏ cuối tuần)
                     "label": stub_label(float(last["ma7"]), float(last["ma20"])),
                     "confidence": 0.5,  # stub — không có xác suất thật
                     "model_version": MODEL_VERSION,

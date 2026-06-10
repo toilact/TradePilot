@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.database import (
@@ -40,23 +40,33 @@ async def _latest_sentiment(session: AsyncSession, stock_id: int) -> float:
     return float(row) if row is not None else 0.0
 
 
+def _close(closes_desc: list[float]) -> float:
+    """close gần nhất từ list giá sắp GIẢM dần theo ngày (rỗng → 0)."""
+    return closes_desc[0] if closes_desc else 0.0
+
+
+def _change_pct(closes_desc: list[float]) -> float:
+    """% thay đổi phiên gần nhất vs phiên trước (0 nếu <2 phiên hoặc prev=0)."""
+    if len(closes_desc) < 2 or closes_desc[1] == 0:
+        return 0.0
+    close, prev = closes_desc[0], closes_desc[1]
+    return round((close - prev) / prev * 100, 2)
+
+
 async def _close_and_change(session: AsyncSession, stock_id: int) -> tuple[float, float]:
     """(close gần nhất, % thay đổi vs phiên trước). changePct=0 nếu chỉ có 1 phiên."""
-    rows = (
-        await session.execute(
-            select(PriceHistory.close)
-            .where(PriceHistory.stock_id == stock_id)
-            .order_by(PriceHistory.date.desc())
-            .limit(2)
-        )
-    ).scalars().all()
-    if not rows:
-        return 0.0, 0.0
-    close = float(rows[0])
-    if len(rows) < 2 or rows[1] == 0:
-        return close, 0.0
-    prev = float(rows[1])
-    return close, round((close - prev) / prev * 100, 2)
+    closes = [
+        float(c)
+        for c in (
+            await session.execute(
+                select(PriceHistory.close)
+                .where(PriceHistory.stock_id == stock_id)
+                .order_by(PriceHistory.date.desc())
+                .limit(2)
+            )
+        ).scalars().all()
+    ]
+    return _close(closes), _change_pct(closes)
 
 
 async def _build_prediction(session: AsyncSession, stock: Stock) -> dict:
@@ -86,17 +96,90 @@ async def _build_prediction(session: AsyncSession, stock: Stock) -> dict:
 
 
 async def list_predictions(session: AsyncSession) -> list[dict]:
-    """Tất cả mã active có ít nhất 1 prediction → list (sắp theo symbol)."""
+    """Tất cả mã active có ít nhất 1 prediction → list (sắp theo symbol).
+
+    Gom thành 3 query (KHÔNG N+1): latest prediction / 2 giá gần nhất / latest sentiment
+    cho mọi mã trong 1 lượt, dùng window function row_number().
+    """
     stocks = (
         await session.execute(
             select(Stock).where(Stock.is_active.is_(True)).order_by(Stock.symbol)
         )
     ).scalars().all()
+    if not stocks:
+        return []
+    stock_ids = [s.id for s in stocks]
+
+    # --- 1 query: prediction mới nhất mỗi mã ---
+    pred_rn = func.row_number().over(
+        partition_by=Prediction.stock_id, order_by=Prediction.prediction_date.desc()
+    ).label("rn")
+    pred_sub = (
+        select(
+            Prediction.stock_id, Prediction.label, Prediction.confidence,
+            Prediction.model_version, pred_rn,
+        )
+        .where(Prediction.stock_id.in_(stock_ids))
+        .subquery()
+    )
+    pred_rows = (
+        await session.execute(select(pred_sub).where(pred_sub.c.rn == 1))
+    ).all()
+    pred_by_stock = {r.stock_id: r for r in pred_rows}
+
+    # --- 1 query: 2 giá gần nhất mỗi mã (để tính close + changePct) ---
+    price_rn = func.row_number().over(
+        partition_by=PriceHistory.stock_id, order_by=PriceHistory.date.desc()
+    ).label("rn")
+    price_sub = (
+        select(PriceHistory.stock_id, PriceHistory.close, price_rn)
+        .where(PriceHistory.stock_id.in_(stock_ids))
+        .subquery()
+    )
+    price_rows = (
+        await session.execute(
+            select(price_sub)
+            .where(price_sub.c.rn <= 2)
+            .order_by(price_sub.c.stock_id, price_sub.c.rn)
+        )
+    ).all()
+    closes_by_stock: dict[int, list[float]] = {}
+    for r in price_rows:
+        closes_by_stock.setdefault(r.stock_id, []).append(float(r.close))
+
+    # --- 1 query: sentiment mới nhất mỗi mã ---
+    sent_rn = func.row_number().over(
+        partition_by=DailySentiment.stock_id, order_by=DailySentiment.date.desc()
+    ).label("rn")
+    sent_sub = (
+        select(DailySentiment.stock_id, DailySentiment.sentiment_agg, sent_rn)
+        .where(DailySentiment.stock_id.in_(stock_ids))
+        .subquery()
+    )
+    sent_rows = (
+        await session.execute(select(sent_sub).where(sent_sub.c.rn == 1))
+    ).all()
+    sent_by_stock = {r.stock_id: float(r.sentiment_agg) for r in sent_rows}
+
     out = []
     for stock in stocks:
-        item = await _build_prediction(session, stock)
-        if item["label"] is not None:  # chỉ trả mã đã có dự đoán
-            out.append(item)
+        pred = pred_by_stock.get(stock.id)
+        if pred is None:  # chỉ trả mã đã có dự đoán
+            continue
+        out.append(
+            {
+                "symbol": stock.symbol,
+                "name": stock.name,
+                "exchange": _exchange(stock.exchange),
+                "sector": stock.sector or "",
+                "close": _close(closes_by_stock.get(stock.id, [])),
+                "changePct": _change_pct(closes_by_stock.get(stock.id, [])),
+                "label": pred.label,
+                "confidence": float(pred.confidence),
+                "sentiment": sent_by_stock.get(stock.id, 0.0),
+                "modelVersion": pred.model_version,
+            }
+        )
     return out
 
 
@@ -147,7 +230,12 @@ async def get_history(session: AsyncSession, symbol: str) -> list[dict]:
 async def get_accuracy(session: AsyncSession) -> dict:
     """So predictions vs actual_results → AccuracySummary khớp frontend.
 
-    Stub-aware: nếu chưa có actual_results (chưa biết close T+1 thực tế), trả 0 + series rỗng.
+    CONTRACT khớp: theo (stock_id, prediction_date) — tức `ActualResult.date` mang NGÀY T
+    (prediction_date) của dự đoán, là nhãn THỰC TẾ của dự đoán ngày T. KHÔNG khớp theo
+    `target_date` (T+1) vì target_date tính sẵn có thể lệch khi nghỉ lễ; prediction_date
+    luôn là phiên giao dịch thật đã biết → join ổn định. target_date chỉ để hiển thị.
+
+    Stub-aware: nếu chưa có actual_results, trả 0 + series rỗng.
     """
     from collections import defaultdict
 
@@ -155,7 +243,7 @@ async def get_accuracy(session: AsyncSession) -> dict:
         await session.execute(
             select(
                 Prediction.stock_id,
-                Prediction.target_date,
+                Prediction.prediction_date,
                 Prediction.label,
                 Prediction.model_version,
             )
@@ -168,14 +256,14 @@ async def get_accuracy(session: AsyncSession) -> dict:
     ).all()
     actual_map = {(sid, d): lbl for sid, d, lbl in actuals}
 
-    matched: list[tuple[date, bool, str]] = []  # (date, correct, predicted_label)
+    matched: list[tuple[date, bool, str]] = []  # (prediction_date, correct, predicted_label)
     model_version = None
-    for sid, tdate, plabel, mver in preds:
+    for sid, pdate, plabel, mver in preds:
         model_version = mver
-        actual = actual_map.get((sid, tdate))
+        actual = actual_map.get((sid, pdate))
         if actual is None:
             continue
-        matched.append((tdate, actual == plabel, plabel))
+        matched.append((pdate, actual == plabel, plabel))
 
     if not matched:
         return {
