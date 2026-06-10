@@ -1,5 +1,7 @@
 # TradePilot
 
+[![CI](https://github.com/toilact/TradePilot/actions/workflows/ci.yml/badge.svg)](https://github.com/toilact/TradePilot/actions/workflows/ci.yml)
+
 Web dự đoán cổ phiếu Việt Nam: với mỗi mã, dự đoán phiên **T+1** sẽ **Tăng / Giảm / Đi ngang**,
 dựa trên giá lịch sử (OHLCV) + sentiment tin tức tiếng Việt.
 
