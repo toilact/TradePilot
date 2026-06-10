@@ -112,13 +112,18 @@ class Prediction(Base):
 
 
 class ActualResult(Base):
-    """Nhãn thực tế (fill sau khi biết close T+1) — để tính accuracy."""
+    """Nhãn thực tế của dự đoán — để tính accuracy.
+
+    CONTRACT: `date` = NGÀY T (= Prediction.prediction_date), KHÔNG phải T+1. `label` là
+    nhãn thực tế của dự đoán ngày T (so close T+1 vs close T, tính khi đã biết close T+1).
+    Accuracy join theo (stock_id, date)=(stock_id, prediction_date) — ổn định, không lệch lễ.
+    """
 
     __tablename__ = "actual_results"
     __table_args__ = (UniqueConstraint("stock_id", "date", name="uq_actual_stock_date"),)
     id: Mapped[int] = mapped_column(BigIntPK, primary_key=True)
     stock_id: Mapped[int] = mapped_column(ForeignKey("stocks.id"), index=True)
-    date: Mapped[date] = mapped_column(Date, index=True)
+    date: Mapped[date] = mapped_column(Date, index=True)  # = prediction_date (ngày T)
     label: Mapped[str] = mapped_column(String(10))
 
 

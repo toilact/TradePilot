@@ -72,6 +72,36 @@ async def test_list_predictions_only_with_label(session_factory):
     assert [p["symbol"] for p in lst] == ["VCB"]  # FPT bị loại (chưa có dự đoán)
 
 
+async def test_list_predictions_multi_stock_no_mixup(session_factory):
+    # Bảo vệ N+1 refactor (window function): mỗi mã phải gom ĐÚNG close/changePct/sentiment/label,
+    # không lẫn sang mã khác khi query gom toàn bộ.
+    await _seed(session_factory)  # VCB
+    async with session_factory() as s:
+        fpt = Stock(symbol="FPT", name="FPT", exchange="HSX")
+        s.add(fpt)
+        await s.flush()
+        s.add_all(
+            [
+                PriceHistory(stock_id=fpt.id, date=date(2026, 6, 8), open=100, high=101,
+                             low=99, close=100.0, volume=500),
+                PriceHistory(stock_id=fpt.id, date=date(2026, 6, 9), open=100, high=105,
+                             low=100, close=110.0, volume=600),  # +10%
+                DailySentiment(stock_id=fpt.id, date=date(2026, 6, 9),
+                               sentiment_agg=-0.5, news_count=1),
+                Prediction(stock_id=fpt.id, prediction_date=date(2026, 6, 9),
+                           target_date=date(2026, 6, 10), label="giam", confidence=0.6,
+                           model_version="stub_v0"),
+            ]
+        )
+        await s.commit()
+        lst = await read_api.list_predictions(s)
+    by_sym = {p["symbol"]: p for p in lst}
+    assert by_sym["VCB"]["close"] == 61.2 and by_sym["VCB"]["changePct"] == 2.0
+    assert by_sym["VCB"]["label"] == "tang" and by_sym["VCB"]["sentiment"] == 0.3
+    assert by_sym["FPT"]["close"] == 110.0 and by_sym["FPT"]["changePct"] == 10.0
+    assert by_sym["FPT"]["label"] == "giam" and by_sym["FPT"]["sentiment"] == -0.5
+
+
 async def test_get_history_with_sentiment_fallback(session_factory):
     await _seed(session_factory)
     async with session_factory() as s:
@@ -93,10 +123,22 @@ async def test_accuracy_empty_when_no_actuals(session_factory):
 async def test_accuracy_computed_with_actuals(session_factory):
     sid = await _seed(session_factory)
     async with session_factory() as s:
-        # prediction target_date=10/6 label=tang. actual ngày 10/6 = tang → đúng.
-        s.add(ActualResult(stock_id=sid, date=date(2026, 6, 10), label="tang"))
+        # CONTRACT: actual.date = prediction_date (ngày T = 9/6), KHÔNG phải target_date.
+        # prediction ngày T=9/6 label=tang; actual ngày 9/6 = tang → đúng.
+        s.add(ActualResult(stock_id=sid, date=date(2026, 6, 9), label="tang"))
         await s.commit()
         acc = await read_api.get_accuracy(s)
     assert acc["overall"] == 1.0
     assert acc["byLabel"]["tang"] == 1.0
     assert len(acc["series"]) == 1
+
+
+async def test_accuracy_join_by_prediction_date_not_target(session_factory):
+    # Bảo vệ contract: actual khớp prediction_date (T), không phải target_date (T+1).
+    sid = await _seed(session_factory)  # prediction_date=9/6, target_date=10/6, label=tang
+    async with session_factory() as s:
+        # Fill actual theo target_date (10/6) — KHÔNG được khớp → vẫn rỗng.
+        s.add(ActualResult(stock_id=sid, date=date(2026, 6, 10), label="tang"))
+        await s.commit()
+        acc = await read_api.get_accuracy(s)
+    assert acc["series"] == []  # không khớp vì 10/6 ≠ prediction_date 9/6
