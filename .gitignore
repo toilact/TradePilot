@@ -38,3 +38,11 @@ CLAUDE.md
 CONTEXT.md
 PLAN.md
 **/SKILL.md
+
+# Tooling nội bộ (skills library, code index, repo tạm) — không publish
+.ecc/
+.codegraph/
+temp_repos/
+AGENTS.md
+ECC-LOCAL-SETUP.md
+ECC-SKILLS-INDEX.md
