@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import logging
 import re
 import urllib.robotparser
 from datetime import datetime, timedelta, timezone
@@ -33,6 +32,7 @@ from urllib.parse import urljoin, urlparse
 from xml.etree import ElementTree
 
 import httpx
+import structlog
 from bs4 import BeautifulSoup
 from sqlalchemy import select
 
@@ -40,7 +40,7 @@ from db.upsert import upsert
 from models.database import News, NewsStock, SessionLocal, Stock
 from services.stock_seed import seed_stock
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 REQUEST_DELAY_SECONDS = 1.0  # tránh bị block IP
 USER_AGENT = "TradePilotBot/0.1 (personal research project)"
@@ -98,7 +98,7 @@ def _parse_cafef_time(raw: str) -> datetime | None:
             return datetime.strptime(raw.strip(), fmt)
         except ValueError:
             continue
-    logger.warning("CafeF: không parse được thời gian %r", raw)
+    logger.warning("cafef_time_parse_failed", raw=raw)
     return None
 
 
@@ -111,7 +111,7 @@ def parse_cafef_rss(xml: str) -> list[dict]:
     try:
         root = ElementTree.fromstring(xml)
     except ElementTree.ParseError as exc:
-        logger.warning("RSS: không parse được XML: %s", exc)
+        logger.warning("rss_xml_parse_failed", error=str(exc))
         return []
     out: list[dict] = []
     for item in root.iter("item"):
@@ -137,7 +137,7 @@ def _parse_rss_time(raw: str | None) -> datetime | None:
     try:
         dt = parsedate_to_datetime(raw.strip())
     except (TypeError, ValueError) as exc:
-        logger.warning("RSS: không parse được pubDate %r: %s", raw, exc)
+        logger.warning("rss_pubdate_parse_failed", raw=raw, error=str(exc))
         return None
     if dt.tzinfo is not None:
         dt = dt.astimezone(VN_OFFSET).replace(tzinfo=None)
@@ -184,7 +184,7 @@ def _robots_ok(url: str) -> bool:
     try:
         rp.read()
     except Exception as exc:  # noqa: BLE001 — không chặn pipeline vì lỗi đọc robots
-        logger.warning("Không đọc được robots.txt %s: %s", robots_url, exc)
+        logger.warning("robots_read_failed", url=robots_url, error=str(exc))
         return True
     return rp.can_fetch(USER_AGENT, url)
 
@@ -196,7 +196,7 @@ def _cafef_news_url(symbol: str) -> str:
 async def _fetch(url: str) -> str | None:
     """GET 1 trang với UA rõ ràng + delay lịch sự. None nếu robots cấm hoặc lỗi."""
     if not _robots_ok(url):
-        logger.warning("robots.txt cấm crawl %s — bỏ qua", url)
+        logger.warning("robots_disallowed", url=url)
         return None
     await asyncio.sleep(REQUEST_DELAY_SECONDS)  # rate-limit lịch sự
     async with httpx.AsyncClient(
@@ -312,7 +312,7 @@ async def crawl_rss(feeds: tuple[str, ...] = CAFEF_RSS_FEEDS) -> int:
     """
     lookup = await _stock_lookup()
     if not lookup:
-        logger.warning("crawl_rss: bảng stocks rỗng — seed mã trước (vd crawl_news VCB)")
+        logger.warning("crawl_rss_no_stocks", hint="seed mã trước (vd crawl_news VCB)")
         return 0
 
     total_new = 0
@@ -326,9 +326,7 @@ async def crawl_rss(feeds: tuple[str, ...] = CAFEF_RSS_FEEDS) -> int:
         matched = [r for r in rows if r["stock_ids"]]
         new_count = await _persist_multi(matched)
         total_new += new_count
-        logger.info(
-            "crawl_rss %s: %d bài, %d khớp mã, %d mới", feed, len(rows), len(matched), new_count
-        )
+        logger.info("rss_crawled", feed=feed, total=len(rows), matched=len(matched), new=new_count)
     return total_new
 
 
@@ -339,17 +337,19 @@ async def crawl_news(symbol: str) -> int:
 
     html = await _fetch(_cafef_news_url(symbol))
     if html is None:
-        logger.warning("crawler %s: không lấy được trang CafeF", symbol)
+        logger.warning("cafef_fetch_failed", symbol=symbol)
         return 0
 
     rows = parse_cafef(html)
     new_count = await _persist(rows, stock_id)
-    logger.info("crawler %s: %d bài (mới %d) từ CafeF", symbol, len(rows), new_count)
+    logger.info("news_crawled", symbol=symbol, total=len(rows), new=new_count)
     return new_count
 
 
 def _main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    from logging_config import configure_logging
+
+    configure_logging()
     parser = argparse.ArgumentParser(description="Crawl tin tức CafeF (trang theo mã hoặc RSS)")
     parser.add_argument("--symbol", help="Crawl trang tin theo mã, vd VCB")
     parser.add_argument("--rss", action="store_true", help="Crawl feed RSS chuyên mục → map về mã")

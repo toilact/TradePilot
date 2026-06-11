@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     app_env: str = "development"
     log_level: str = "INFO"
+    # Observability (M4) — rỗng = tắt, app vẫn chạy bình thường
+    sentry_dsn: str = ""
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
 
     @property
     def sync_database_url(self) -> str:

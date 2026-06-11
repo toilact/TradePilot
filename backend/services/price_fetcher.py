@@ -13,16 +13,16 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import logging
 from datetime import date, datetime
 
 import pandas as pd
+import structlog
 
 from db.upsert import upsert
 from models.database import PriceHistory, SessionLocal
 from services.stock_seed import seed_stock
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 DEFAULT_START = "2009-01-01"
 SOURCE = "vci"
@@ -104,7 +104,7 @@ async def fetch_price_history(
         )
 
     logger.info(
-        "price_fetcher %s [%s→%s]: ghi %d dòng (bỏ %d)", symbol, start, end, written, dropped
+        "price_fetched", symbol=symbol, start=start, end=end, written=written, dropped=dropped
     )
     return written
 
@@ -127,7 +127,9 @@ def _to_int(v) -> int | None:
 
 
 def _main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    from logging_config import configure_logging
+
+    configure_logging()
     parser = argparse.ArgumentParser(description="Fetch OHLCV 1 mã CK qua vnstock")
     parser.add_argument("--symbol", required=True)
     parser.add_argument("--start", default=DEFAULT_START)
