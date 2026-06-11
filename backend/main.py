@@ -11,21 +11,12 @@ import structlog
 from fastapi import FastAPI, Request
 
 from config import settings
-from logging_config import configure_logging
+from logging_config import configure_logging, init_sentry
 
 configure_logging()
 logger = structlog.get_logger(__name__)
 
-# Sentry: chỉ init khi có DSN — không DSN thì app chạy bình thường (dev/CI không cần).
-if settings.sentry_dsn:
-    import sentry_sdk
-
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        environment=settings.app_env,
-        traces_sample_rate=0.0,  # chỉ bắt lỗi, không APM — đúng phạm vi M4
-        send_default_pii=False,
-    )
+if init_sentry():
     logger.info("sentry_initialized", environment=settings.app_env)
 
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402 — sau Sentry init (docs Sentry)
@@ -35,8 +26,18 @@ from api import auth, predictions, stocks  # noqa: E402
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # TODO M5: khởi động scheduler (create_scheduler().start()) khi ENABLE_SCHEDULER=true.
+    # Trigger chính của pipeline là launchd 16:05 (scripts/run_daily_pipeline.py).
+    # APScheduler in-app chỉ bật qua ENABLE_SCHEDULER (deploy sau — Render không có launchd).
+    scheduler = None
+    if settings.enable_scheduler:
+        from services.scheduler import create_scheduler
+
+        scheduler = create_scheduler()
+        scheduler.start()
+        logger.info("scheduler_started", cron="16:00 mon-fri Asia/Ho_Chi_Minh")
     yield
+    if scheduler is not None:
+        scheduler.shutdown(wait=False)
 
 
 app = FastAPI(title="TradePilot API", version="0.1.0", lifespan=lifespan)
