@@ -4,9 +4,11 @@ Chạy từ repo root:
     cd backend && uv run python -m scripts.export_training_data
 
 Output: ml/data/training_panel.csv
-Columns: date, symbol, stock_id, close, ma7, ma20, rsi14, macd, macd_signal,
-         sentiment_agg, news_count, label
-(symbol = stock_id = mã chứng khoán string; notebook encode stock_id → code số khi train)
+Columns: date, symbol, stock_id, close, *FEATURE_COLS (ma7, ma20, rsi14, macd, macd_signal,
+         ret_1d, ret_5d, abs_ret_1d, vol_5, vol_20, dist_ma20, ma_ratio, sentiment_agg,
+         news_count, sector), label
+(symbol = stock_id = mã chứng khoán string; notebook encode stock_id → code số khi train.
+ Feature list MODEL v4 = features.builder.LGBM_V4_FEATURES — train import từ đó, không tự chế.)
 """
 
 from __future__ import annotations

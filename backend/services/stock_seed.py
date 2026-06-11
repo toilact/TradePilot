@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from functools import lru_cache
 
 from sqlalchemy import select
 
@@ -14,6 +15,26 @@ from db.upsert import upsert
 from models.database import SessionLocal, Stock
 
 logger = logging.getLogger(__name__)
+
+# Sector lấy ở ICB level 2 ("Ngân hàng", "Bất động sản", "Thực phẩm và đồ uống"...):
+# level 1 quá rộng (VIC/VHM/VRE đều "Tài chính"), level 4 quá hẹp (M2, grill 2026-06-11).
+_ICB_SECTOR_LEVEL = 2
+
+
+@lru_cache(maxsize=2)
+def _exchange_df(source: str):
+    """Listing theo sàn — cache module-level: seed 30 mã chỉ gọi API 1 lần."""
+    from vnstock import Listing
+
+    return Listing(source=source).symbols_by_exchange()
+
+
+@lru_cache(maxsize=2)
+def _industries_df(source: str):
+    """Listing theo ngành ICB (mỗi mã 4 hàng level 1-4) — cache như trên."""
+    from vnstock import Listing
+
+    return Listing(source=source).symbols_by_industries()
 
 
 def _fetch_metadata(symbol: str, source: str = "vci") -> dict:
@@ -23,9 +44,7 @@ def _fetch_metadata(symbol: str, source: str = "vci") -> dict:
     """
     name, exchange, sector = symbol, "HOSE", None
     try:
-        from vnstock import Listing
-
-        df = Listing(source=source).symbols_by_exchange()
+        df = _exchange_df(source)
         # df có cột symbol + exchange (tên cột có thể khác theo version) → tra cứu mềm dẻo.
         cols = {c.lower(): c for c in df.columns}
         sym_col = cols.get("symbol") or cols.get("ticker")
@@ -42,6 +61,22 @@ def _fetch_metadata(symbol: str, source: str = "vci") -> dict:
                     name = str(row.iloc[0][name_col]) or name
     except Exception as exc:  # noqa: BLE001 — metadata là phụ, không chặn pipeline
         logger.warning("Không lấy được metadata vnstock cho %s: %s", symbol, exc)
+
+    try:
+        ind = _industries_df(source)
+        cols = {c.lower(): c for c in ind.columns}
+        sym_col = cols.get("symbol") or cols.get("ticker")
+        icb_name_col = cols.get("icb_name") or cols.get("industry") or cols.get("sector")
+        icb_level_col = cols.get("icb_level")
+        if sym_col and icb_name_col:
+            rows = ind[ind[sym_col].astype(str).str.upper() == symbol.upper()]
+            if icb_level_col is not None and not rows.empty:
+                lvl = rows[rows[icb_level_col] == _ICB_SECTOR_LEVEL]
+                rows = lvl if not lvl.empty else rows  # version thiếu level 2 → lấy hàng đầu
+            if not rows.empty:
+                sector = str(rows.iloc[0][icb_name_col]).strip() or None
+    except Exception as exc:  # noqa: BLE001 — sector là phụ, không chặn pipeline
+        logger.warning("Không lấy được sector vnstock cho %s: %s", symbol, exc)
 
     return {"symbol": symbol.upper(), "name": name, "exchange": exchange, "sector": sector}
 
