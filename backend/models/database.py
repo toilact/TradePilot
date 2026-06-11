@@ -96,6 +96,14 @@ class DailySentiment(Base):
 
 
 class Prediction(Base):
+    """Dự đoán T+1 + confidence-gating (M3 — ADR 0002).
+
+    Gating: `confidence` = max prob SAU calibration (temperature scaling);
+    `is_actionable` = confidence ≥ `threshold` — quyết định ở INFERENCE, API chỉ đọc
+    (backend nguồn sự thật, frontend không tự suy từ threshold). Bản ghi stub_v0 cũ
+    không có probability → 3 cột prob + threshold NULL, is_actionable=false.
+    """
+
     __tablename__ = "predictions"
     __table_args__ = (
         UniqueConstraint(
@@ -109,6 +117,11 @@ class Prediction(Base):
     label: Mapped[str] = mapped_column(String(10))  # tang / giam / di_ngang
     confidence: Mapped[float] = mapped_column(Float)
     model_version: Mapped[str] = mapped_column(String(20))
+    prob_tang: Mapped[float | None] = mapped_column(Float, nullable=True)
+    prob_giam: Mapped[float | None] = mapped_column(Float, nullable=True)
+    prob_di_ngang: Mapped[float | None] = mapped_column(Float, nullable=True)
+    is_actionable: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class ActualResult(Base):

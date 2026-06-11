@@ -1,6 +1,8 @@
-import type { Label } from "@/lib/types";
+import type { Display } from "@/lib/types";
 
-const MAP: Record<Label, { text: string; cls: string; glyph: string }> = {
+// Trạng thái 4 "khong_du_tin_hieu" (M3 — confidence-gating): xám mờ trung tính,
+// KHÔNG dùng gold (gold = brand, ADR 0001) và nhạt hơn flat (flat = data Đi ngang).
+const MAP: Record<Display, { text: string; cls: string; glyph: string }> = {
   tang: {
     text: "Tăng",
     cls: "text-up border-up/30 bg-up/10",
@@ -16,13 +18,18 @@ const MAP: Record<Label, { text: string; cls: string; glyph: string }> = {
     cls: "text-flat border-flat/30 bg-flat/10",
     glyph: "→",
   },
+  khong_du_tin_hieu: {
+    text: "Không đủ tín hiệu",
+    cls: "text-white/45 border-white/10 bg-white/[0.04]",
+    glyph: "·",
+  },
 };
 
 export function PredictionBadge({
   label,
   size = "md",
 }: {
-  label: Label;
+  label: Display;
   size?: "sm" | "md" | "lg";
 }) {
   const m = MAP[label];

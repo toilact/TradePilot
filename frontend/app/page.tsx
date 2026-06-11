@@ -1,7 +1,7 @@
 import { getPredictions } from "@/lib/api";
 import { Reveal } from "@/components/reveal";
 import { StatCard } from "@/components/stat-card";
-import { PredictionRow } from "@/components/prediction-row";
+import { PredictionTable } from "@/components/prediction-table";
 import { Disclaimer } from "@/components/disclaimer";
 import { fmtConfidence } from "@/lib/format";
 
@@ -14,9 +14,12 @@ export default async function Home() {
     year: "numeric",
   });
 
-  const up = preds.filter((p) => p.label === "tang").length;
-  const down = preds.filter((p) => p.label === "giam").length;
-  const flat = preds.filter((p) => p.label === "di_ngang").length;
+  // Đếm theo `display` — chỉ tín hiệu model dám đoán (gating M3); mã dưới ngưỡng
+  // mang trạng thái "không đủ tín hiệu", không tính là tín hiệu Tăng/Giảm.
+  const up = preds.filter((p) => p.display === "tang").length;
+  const down = preds.filter((p) => p.display === "giam").length;
+  const flat = preds.filter((p) => p.display === "di_ngang").length;
+  const noSignal = preds.filter((p) => !p.isActionable).length;
   const avgConf = preds.reduce((a, p) => a + p.confidence, 0) / preds.length;
 
   return (
@@ -53,8 +56,8 @@ export default async function Home() {
             value={<span className="text-up">{up} mã Tăng</span>}
             sub={
               <span>
-                {down} mã dự đoán Giảm · {flat} mã Đi ngang trong{" "}
-                {preds.length} mã theo dõi.
+                {down} mã dự đoán Giảm · {flat} mã Đi ngang · {noSignal} mã không đủ tín hiệu
+                trong {preds.length} mã theo dõi.
               </span>
             }
             className="min-h-[220px]"
@@ -93,23 +96,7 @@ export default async function Home() {
         </Reveal>
 
         <Reveal delay={100}>
-          <div className="bezel-shell">
-            <div className="bezel-core overflow-hidden">
-              {/* Header (desktop) */}
-              <div className="hidden grid-cols-[1.4fr_1fr_1fr_1.2fr_1fr] gap-6 border-b border-white/5 px-5 py-3 text-[11px] uppercase tracking-[0.16em] text-white/50 md:grid">
-                <span>Mã</span>
-                <span className="text-right">Giá / Thay đổi</span>
-                <span className="text-center">60 phiên</span>
-                <span>Dự đoán T+1</span>
-                <span className="text-right">Chi tiết</span>
-              </div>
-              <div className="divide-y divide-white/5">
-                {preds.map((p) => (
-                  <PredictionRow key={p.symbol} p={p} />
-                ))}
-              </div>
-            </div>
-          </div>
+          <PredictionTable preds={preds} />
         </Reveal>
       </section>
     </div>
