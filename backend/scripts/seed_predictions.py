@@ -21,12 +21,9 @@ _BACKEND = _REPO / "backend"
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
+from services.stock_seed import VN30  # noqa: E402 — sau sys.path setup
+
 MODEL_VERSION = "stub_v0"  # KHÔNG phải TFT — phân biệt rõ với tft_v1
-VN30 = [
-    "ACB", "BCM", "BID", "BVH", "CTG", "FPT", "GAS", "GVR", "HDB", "HPG",
-    "MBB", "MSN", "MWG", "PLX", "POW", "SAB", "SHB", "SSB", "SSI", "STB",
-    "TCB", "TPB", "VCB", "VHM", "VIB", "VIC", "VJC", "VNM", "VPB", "VRE",
-]  # fmt: skip
 
 
 def next_trading_day(d: date) -> date:
