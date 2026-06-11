@@ -22,6 +22,56 @@ from models.database import (
 # vnstock/TCBS đặt tên sàn "HSX"; frontend dùng "HOSE" (tên chính thức). Map về tên frontend.
 _EXCHANGE_MAP = {"HSX": "HOSE"}
 
+# Confidence-gating (M3 — ADR 0002): trạng thái hiển thị khi model không đủ tự tin.
+# Backend quyết định qua is_actionable (ghi lúc inference) — frontend KHÔNG tự suy từ threshold.
+DISPLAY_NO_SIGNAL = "khong_du_tin_hieu"
+_STUB_VERSION = "stub_v0"
+
+
+def _pred_order():
+    """Thứ tự chọn prediction hiển thị: mới nhất trước; trùng ngày → ưu tiên model thật
+    hơn stub_v0; còn trùng nữa → bản ghi mới nhất (id lớn)."""
+    return (
+        Prediction.prediction_date.desc(),
+        (Prediction.model_version != _STUB_VERSION).desc(),
+        Prediction.id.desc(),
+    )
+
+
+def _gating_fields(pred) -> dict:
+    """Field dự đoán + gating từ 1 prediction (ORM object hoặc Row cùng tên cột).
+
+    `display` = label khi actionable, ngược lại DISPLAY_NO_SIGNAL — UI render theo field
+    này. Vẫn trả label/probs đầy đủ để trang chi tiết minh bạch 3 prob bar.
+    """
+    actionable = bool(pred.is_actionable)
+    return {
+        "label": pred.label,
+        "confidence": float(pred.confidence),
+        "probTang": float(pred.prob_tang) if pred.prob_tang is not None else None,
+        "probGiam": float(pred.prob_giam) if pred.prob_giam is not None else None,
+        "probDiNgang": float(pred.prob_di_ngang) if pred.prob_di_ngang is not None else None,
+        "isActionable": actionable,
+        "threshold": float(pred.threshold) if pred.threshold is not None else None,
+        "display": pred.label if actionable else DISPLAY_NO_SIGNAL,
+        "modelVersion": pred.model_version,
+    }
+
+
+# Mã tồn tại nhưng CHƯA có prediction (mới thêm, chưa qua inference) — display vẫn phải là
+# trạng thái hợp lệ cho UI (badge render theo display, không chấp nhận None).
+_EMPTY_GATING = {
+    "label": None,
+    "confidence": None,
+    "probTang": None,
+    "probGiam": None,
+    "probDiNgang": None,
+    "isActionable": False,
+    "threshold": None,
+    "display": DISPLAY_NO_SIGNAL,
+    "modelVersion": None,
+}
+
 
 def _exchange(raw: str) -> str:
     return _EXCHANGE_MAP.get(raw, raw)
@@ -77,7 +127,7 @@ async def _build_prediction(session: AsyncSession, stock: Stock) -> dict:
         await session.execute(
             select(Prediction)
             .where(Prediction.stock_id == stock.id)
-            .order_by(Prediction.prediction_date.desc())
+            .order_by(*_pred_order())
             .limit(1)
         )
     ).scalar_one_or_none()
@@ -90,10 +140,8 @@ async def _build_prediction(session: AsyncSession, stock: Stock) -> dict:
         "sector": stock.sector or "",
         "close": close,
         "changePct": change_pct,
-        "label": pred.label if pred else None,
-        "confidence": float(pred.confidence) if pred else None,
         "sentiment": sentiment,
-        "modelVersion": pred.model_version if pred else None,
+        **(_gating_fields(pred) if pred else _EMPTY_GATING),
     }
 
 
@@ -116,11 +164,9 @@ async def list_predictions(session: AsyncSession) -> list[dict]:
         return []
     stock_ids = [s.id for s in stocks]
 
-    # --- 1 query: prediction mới nhất mỗi mã ---
+    # --- 1 query: prediction hiển thị mỗi mã (mới nhất, ưu tiên non-stub) ---
     pred_rn = (
-        func.row_number()
-        .over(partition_by=Prediction.stock_id, order_by=Prediction.prediction_date.desc())
-        .label("rn")
+        func.row_number().over(partition_by=Prediction.stock_id, order_by=_pred_order()).label("rn")
     )
     pred_sub = (
         select(
@@ -128,6 +174,11 @@ async def list_predictions(session: AsyncSession) -> list[dict]:
             Prediction.label,
             Prediction.confidence,
             Prediction.model_version,
+            Prediction.prob_tang,
+            Prediction.prob_giam,
+            Prediction.prob_di_ngang,
+            Prediction.is_actionable,
+            Prediction.threshold,
             pred_rn,
         )
         .where(Prediction.stock_id.in_(stock_ids))
@@ -185,10 +236,8 @@ async def list_predictions(session: AsyncSession) -> list[dict]:
                 "sector": stock.sector or "",
                 "close": _close(closes_by_stock.get(stock.id, [])),
                 "changePct": _change_pct(closes_by_stock.get(stock.id, [])),
-                "label": pred.label,
-                "confidence": float(pred.confidence),
                 "sentiment": sent_by_stock.get(stock.id, 0.0),
-                "modelVersion": pred.model_version,
+                **_gating_fields(pred),
             }
         )
     return out
@@ -257,6 +306,7 @@ async def get_accuracy(session: AsyncSession) -> dict:
                 Prediction.prediction_date,
                 Prediction.label,
                 Prediction.model_version,
+                Prediction.is_actionable,
             )
         )
     ).all()
@@ -265,14 +315,38 @@ async def get_accuracy(session: AsyncSession) -> dict:
     ).all()
     actual_map = {(sid, d): lbl for sid, d, lbl in actuals}
 
+    # Version hiện hành = version của prediction mới nhất (trùng ngày → ưu tiên non-stub).
+    # Coverage/Precision gating (M3) chấm theo ĐÚNG version này — trộn version sẽ vô nghĩa.
+    current_version = None
+    if preds:
+        current_version = max(
+            preds, key=lambda r: (r.prediction_date, r.model_version != _STUB_VERSION)
+        ).model_version
+    cur_preds = [r for r in preds if r.model_version == current_version]
+    coverage = (
+        round(sum(bool(r.is_actionable) for r in cur_preds) / len(cur_preds), 4)
+        if cur_preds
+        else 0.0
+    )
+    actionable_correct = [
+        actual_map[(r.stock_id, r.prediction_date)] == r.label
+        for r in cur_preds
+        if r.is_actionable and (r.stock_id, r.prediction_date) in actual_map
+    ]
+    precision_actionable = (
+        round(sum(actionable_correct) / len(actionable_correct), 4)
+        if actionable_correct
+        else None  # chưa có actual nào trên tập dám đoán → chưa chấm được
+    )
+
+    # overall/byLabel/series giữ semantics cũ: chấm trên MỌI version (lịch sử đầy đủ);
+    # chỉ coverage/precision ở trên là theo version hiện hành.
     matched: list[tuple[date, bool, str]] = []  # (prediction_date, correct, predicted_label)
-    model_version = None
-    for sid, pdate, plabel, mver in preds:
-        model_version = mver
-        actual = actual_map.get((sid, pdate))
+    for r in preds:
+        actual = actual_map.get((r.stock_id, r.prediction_date))
         if actual is None:
             continue
-        matched.append((pdate, actual == plabel, plabel))
+        matched.append((r.prediction_date, actual == r.label, r.label))
 
     if not matched:
         return {
@@ -280,7 +354,9 @@ async def get_accuracy(session: AsyncSession) -> dict:
             "last30": 0.0,
             "byLabel": {"tang": 0.0, "giam": 0.0, "di_ngang": 0.0},
             "series": [],
-            "modelVersion": model_version or "n/a",
+            "modelVersion": current_version or "n/a",
+            "coverage": coverage,
+            "precisionActionable": precision_actionable,
             "detail": "chưa có actual_results để chấm — cần biết close T+1 thực tế",
         }
 
@@ -314,5 +390,7 @@ async def get_accuracy(session: AsyncSession) -> dict:
         "last30": last30,
         "byLabel": by_label_acc,
         "series": series,
-        "modelVersion": model_version or "n/a",
+        "modelVersion": current_version or "n/a",
+        "coverage": coverage,
+        "precisionActionable": precision_actionable,
     }

@@ -22,6 +22,11 @@ dependencies = [
 ]
 
 [dependency-groups]
+# Dep ML inference local — KHÔNG vào default install (CI/Render không cài; xem ADR 0002).
+# Cài: uv sync --group inference. M5 thêm torch (PhoBERT) vào nhóm này.
+inference = [
+    "lightgbm>=4.5",
+]
 dev = [
     "ruff>=0.8",
     "pytest>=8.3",

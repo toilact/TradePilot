@@ -41,19 +41,19 @@ export function PredictionRow({ p }: { p: Prediction }) {
         <Sparkline values={series} up={p.changePct >= 0} />
       </div>
 
-      {/* Dự đoán + confidence */}
+      {/* Dự đoán + confidence — badge theo `display` (backend quyết định gating) */}
       <div className="hidden items-center gap-3 md:flex">
-        <PredictionBadge label={p.label} />
-        <ConfidenceMeter value={p.confidence} />
+        <PredictionBadge label={p.display} />
+        {p.isActionable && <ConfidenceMeter value={p.confidence} />}
       </div>
 
       {/* Mobile: badge + arrow */}
       <div className="flex items-center justify-end gap-3">
         <div className="md:hidden">
-          <PredictionBadge label={p.label} size="sm" />
+          <PredictionBadge label={p.display} size="sm" />
         </div>
         <span className="hidden text-xs text-white/55 md:inline">
-          {fmtConfidence(p.confidence)} tin cậy
+          {p.isActionable ? `${fmtConfidence(p.confidence)} tin cậy` : "dưới ngưỡng"}
         </span>
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/[0.04] text-white/55 transition-all duration-500 ease-spring group-hover:translate-x-0.5 group-hover:bg-white/10 group-hover:text-white">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">

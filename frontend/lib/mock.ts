@@ -1,12 +1,36 @@
 // Mock data để dựng/giao diện chạy độc lập trước khi backend có dữ liệu thật.
 import type {
   AccuracySummary,
+  Label,
   NewsItem,
   PricePoint,
   Prediction,
 } from "./types";
 
-export const MOCK_PREDICTIONS: Prediction[] = [
+const MOCK_THRESHOLD = 0.65; // mock gating: vài mã actionable, vài mã "không đủ tín hiệu"
+
+type MockBase = Omit<
+  Prediction,
+  "probTang" | "probGiam" | "probDiNgang" | "isActionable" | "threshold" | "display"
+>;
+
+function withGating(p: MockBase): Prediction {
+  // chia phần prob còn lại đều cho 2 lớp kia — chỉ để UI có số hợp lý
+  const rest = (1 - p.confidence) / 2;
+  const prob = (l: Label) => (p.label === l ? p.confidence : rest);
+  const isActionable = p.confidence >= MOCK_THRESHOLD;
+  return {
+    ...p,
+    probTang: prob("tang"),
+    probGiam: prob("giam"),
+    probDiNgang: prob("di_ngang"),
+    isActionable,
+    threshold: MOCK_THRESHOLD,
+    display: isActionable ? p.label : "khong_du_tin_hieu",
+  };
+}
+
+export const MOCK_PREDICTIONS: Prediction[] = ([
   { symbol: "VCB", name: "Vietcombank", exchange: "HOSE", sector: "Ngân hàng", close: 92.4, changePct: 1.8, label: "tang", confidence: 0.78, sentiment: 0.42, modelVersion: "v0.1.0" },
   { symbol: "FPT", name: "FPT Corp", exchange: "HOSE", sector: "Công nghệ", close: 138.2, changePct: 2.4, label: "tang", confidence: 0.81, sentiment: 0.55, modelVersion: "v0.1.0" },
   { symbol: "HPG", name: "Hòa Phát", exchange: "HOSE", sector: "Thép", close: 27.85, changePct: -0.3, label: "di_ngang", confidence: 0.64, sentiment: 0.05, modelVersion: "v0.1.0" },
@@ -17,7 +41,7 @@ export const MOCK_PREDICTIONS: Prediction[] = [
   { symbol: "GAS", name: "PV Gas", exchange: "HOSE", sector: "Năng lượng", close: 68.0, changePct: -2.1, label: "giam", confidence: 0.66, sentiment: -0.21, modelVersion: "v0.1.0" },
   { symbol: "ACB", name: "Ngân hàng ACB", exchange: "HOSE", sector: "Ngân hàng", close: 25.1, changePct: 0.4, label: "di_ngang", confidence: 0.58, sentiment: 0.02, modelVersion: "v0.1.0" },
   { symbol: "VNM", name: "Vinamilk", exchange: "HOSE", sector: "Tiêu dùng", close: 66.2, changePct: 1.1, label: "tang", confidence: 0.63, sentiment: 0.18, modelVersion: "v0.1.0" },
-];
+] satisfies MockBase[]).map(withGating);
 
 export function mockPriceSeries(symbol: string): PricePoint[] {
   // sinh chuỗi giả định ổn định theo symbol để không nhảy mỗi render
@@ -50,6 +74,8 @@ export const MOCK_ACCURACY: AccuracySummary = {
   last30: 0.643,
   byLabel: { tang: 0.66, giam: 0.58, di_ngang: 0.55 },
   modelVersion: "v0.1.0",
+  coverage: 0.214,
+  precisionActionable: 0.667,
   series: Array.from({ length: 30 }, (_, i) => {
     const d = new Date();
     d.setDate(d.getDate() - (29 - i));

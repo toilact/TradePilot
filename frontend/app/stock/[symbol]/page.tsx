@@ -64,22 +64,47 @@ export default async function StockPage({
       {/* Dự đoán nổi bật */}
       <Reveal delay={120}>
         <div className="mt-10 bezel-shell">
-          <div className="bezel-core flex flex-col gap-6 p-7 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-5">
-              <span className="text-[11px] uppercase tracking-[0.18em] text-white/55">
-                Dự đoán T+1
-              </span>
-              <PredictionBadge label={p.label} size="lg" />
+          <div className="bezel-core flex flex-col gap-6 p-7">
+            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-5">
+                <span className="text-[11px] uppercase tracking-[0.18em] text-white/55">
+                  Dự đoán T+1
+                </span>
+                <PredictionBadge label={p.display} size="lg" />
+              </div>
+              <div className="flex items-center gap-8">
+                {/* confidence/modelVersion null khi mã chưa có prediction (mới thêm, chưa inference) */}
+                <Metric
+                  label="Độ tin cậy"
+                  value={p.confidence != null ? fmtConfidence(p.confidence) : "—"}
+                />
+                {p.threshold != null && (
+                  <Metric label="Ngưỡng tín hiệu" value={fmtConfidence(p.threshold)} />
+                )}
+                <Metric
+                  label="Sentiment"
+                  value={p.sentiment.toFixed(2)}
+                  accent={p.sentiment >= 0 ? "#34d399" : "#fb7185"}
+                />
+                <Metric label="Model" value={p.modelVersion ?? "—"} />
+              </div>
             </div>
-            <div className="flex items-center gap-8">
-              <Metric label="Độ tin cậy" value={fmtConfidence(p.confidence)} />
-              <Metric
-                label="Sentiment"
-                value={p.sentiment.toFixed(2)}
-                accent={p.sentiment >= 0 ? "#34d399" : "#fb7185"}
-              />
-              <Metric label="Model" value={p.modelVersion} />
-            </div>
+
+            {/* Phân phối xác suất 3 lớp — minh bạch cả khi không đủ tín hiệu */}
+            {p.probTang != null && p.probGiam != null && p.probDiNgang != null && (
+              <div className="grid gap-2 border-t border-white/5 pt-5">
+                <ProbBar label="Tăng" value={p.probTang} color="#34d399" />
+                <ProbBar label="Giảm" value={p.probGiam} color="#fb7185" />
+                <ProbBar label="Đi ngang" value={p.probDiNgang} color="#a1a1aa" />
+                {!p.isActionable && (
+                  <p className="mt-1 text-xs text-white/50">
+                    Xác suất cao nhất {fmtConfidence(p.confidence)} dưới ngưỡng{" "}
+                    {p.threshold != null ? fmtConfidence(p.threshold) : "—"} — model không đủ
+                    tự tin để phát tín hiệu phiên này.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </Reveal>
@@ -158,6 +183,21 @@ function Metric({ label, value, accent }: { label: string; value: string; accent
       <p className="mt-1 font-display text-xl font-semibold" style={accent ? { color: accent } : undefined}>
         {value}
       </p>
+    </div>
+  );
+}
+
+function ProbBar({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="grid grid-cols-[80px_1fr_48px] items-center gap-3 text-xs">
+      <span className="text-white/60">{label}</span>
+      <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${Math.round(value * 100)}%`, background: color }}
+        />
+      </div>
+      <span className="text-right font-mono text-white/70">{fmtConfidence(value)}</span>
     </div>
   );
 }

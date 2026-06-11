@@ -9,7 +9,8 @@ export default async function AccuracyPage() {
   const acc = await getAccuracy();
   const pct = (v: number) => `${Math.round(v * 100)}%`;
 
-  // chart đường accuracy
+  // chart đường accuracy (data thật có thể chưa có series — chấm cần actual T+1)
+  const hasSeries = acc.series.length >= 2;
   const W = 760;
   const H = 180;
   const vals = acc.series.map((s) => s.accuracy);
@@ -72,6 +73,29 @@ export default async function AccuracyPage() {
         ))}
       </section>
 
+      {/* Confidence-gating (M3): model chỉ phát tín hiệu khi đủ tự tin */}
+      <section className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Reveal>
+          <StatCard
+            label="Coverage — tỷ lệ dám đoán"
+            value={pct(acc.coverage)}
+            sub="Phần trăm mã model đủ tự tin phát tín hiệu (confidence ≥ ngưỡng). Mã còn lại hiển thị «Không đủ tín hiệu»."
+          />
+        </Reveal>
+        <Reveal delay={80}>
+          <StatCard
+            label="Precision trên tập dám đoán"
+            value={acc.precisionActionable != null ? pct(acc.precisionActionable) : "—"}
+            sub={
+              acc.precisionActionable != null
+                ? "Tỷ lệ đúng CHỈ tính trên các tín hiệu đã phát — thước đo trung thực của gating."
+                : "Chưa có kết quả thực tế (close T+1) để chấm các tín hiệu đã phát."
+            }
+            accent="#34d399"
+          />
+        </Reveal>
+      </section>
+
       {/* Chart rolling accuracy */}
       <Reveal delay={120}>
         <div className="mt-6 bezel-shell">
@@ -79,16 +103,22 @@ export default async function AccuracyPage() {
             <h2 className="mb-6 font-display text-lg font-semibold text-white">
               Độ chính xác cuộn · 30 phiên
             </h2>
-            <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="acc-fill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#e8c39e" stopOpacity="0.2" />
-                  <stop offset="100%" stopColor="#e8c39e" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <path d={area} fill="url(#acc-fill)" />
-              <path d={line} fill="none" stroke="#e8c39e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            {hasSeries ? (
+              <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="acc-fill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#e8c39e" stopOpacity="0.2" />
+                    <stop offset="100%" stopColor="#e8c39e" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path d={area} fill="url(#acc-fill)" />
+                <path d={line} fill="none" stroke="#e8c39e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            ) : (
+              <p className="py-10 text-center text-sm text-white/50">
+                Chưa đủ kết quả thực tế để vẽ — biểu đồ xuất hiện sau vài phiên giao dịch.
+              </p>
+            )}
           </div>
         </div>
       </Reveal>
