@@ -68,3 +68,23 @@ def configure_logging(level: str | None = None) -> None:
     access = logging.getLogger("uvicorn.access")
     access.handlers = []
     access.propagate = False
+
+
+def init_sentry() -> bool:
+    """Init Sentry nếu có SENTRY_DSN (không có → no-op, app chạy bình thường).
+
+    traces_sample_rate=0: chỉ bắt lỗi, không APM — đúng phạm vi M4, tiết kiệm quota free.
+    LoggingIntegration mặc định: logger.exception/error (kể cả qua structlog→stdlib)
+    tự thành Sentry event. Dùng chung cho main.py (API) lẫn scripts (pipeline).
+    """
+    if not settings.sentry_dsn:
+        return False
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.app_env,
+        traces_sample_rate=0.0,
+        send_default_pii=False,
+    )
+    return True

@@ -17,9 +17,10 @@ from datetime import date, datetime
 
 import pandas as pd
 import structlog
+from sqlalchemy import select
 
 from db.upsert import upsert
-from models.database import PriceHistory, SessionLocal
+from models.database import PriceHistory, SessionLocal, Stock
 from services.stock_seed import seed_stock
 
 logger = structlog.get_logger(__name__)
@@ -88,7 +89,7 @@ async def fetch_price_history(
     symbol = symbol.upper()
     end = end or date.today().isoformat()
 
-    stock_id = await seed_stock(symbol, source)
+    stock_id = await _stock_id_for(symbol, source)
     df = await asyncio.to_thread(_fetch_raw, symbol, start, end, source)
 
     rows = transform(df, stock_id)
@@ -107,6 +108,21 @@ async def fetch_price_history(
         "price_fetched", symbol=symbol, start=start, end=end, written=written, dropped=dropped
     )
     return written
+
+
+async def _stock_id_for(symbol: str, source: str) -> int:
+    """stock_id từ bảng stocks; chỉ seed (gọi API metadata) khi mã CHƯA có.
+
+    Job ngày chạy 30 mã đã seed — bỏ call metadata thừa, đỡ tốn quota
+    vnstock guest (20 request/phút).
+    """
+    async with SessionLocal() as session:
+        sid = (
+            await session.execute(select(Stock.id).where(Stock.symbol == symbol))
+        ).scalar_one_or_none()
+    if sid is not None:
+        return sid
+    return await seed_stock(symbol, source)
 
 
 def _to_float(v) -> float | None:

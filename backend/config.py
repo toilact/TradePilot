@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    # M5: APScheduler in-app (default TẮT — trigger chính là launchd 16:05 trên Mac)
+    enable_scheduler: bool = False
 
     @property
     def sync_database_url(self) -> str:

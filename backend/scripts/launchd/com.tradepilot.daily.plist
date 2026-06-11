@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  TradePilot daily pipeline — 16:05 mon-fri (M5).
+  Cài:  cp scripts/launchd/com.tradepilot.daily.plist ~/Library/LaunchAgents/
+        launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.tradepilot.daily.plist
+  Gỡ:   launchctl bootout gui/$UID/com.tradepilot.daily
+  Chạy thử ngay: launchctl kickstart gui/$UID/com.tradepilot.daily
+  Log:  ~/Library/Logs/tradepilot-daily.log
+  Lưu ý: Mac ngủ lúc 16:05 → launchd chạy bù 1 lần khi wake (StartCalendarInterval).
+  DYLD_LIBRARY_PATH: Homebrew máy này ở ~/homebrew — lightgbm cần libomp (xem ticklist M3).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.tradepilot.daily</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/chithanhdaica/.local/bin/uv</string>
+    <string>run</string>
+    <string>--group</string>
+    <string>inference</string>
+    <string>python</string>
+    <string>-m</string>
+    <string>scripts.run_daily_pipeline</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/chithanhdaica/Documents/TradePilot/backend</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DYLD_LIBRARY_PATH</key>
+    <string>/Users/chithanhdaica/homebrew/opt/libomp/lib</string>
+    <key>PATH</key>
+    <string>/Users/chithanhdaica/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>5</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>5</integer></dict>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>/Users/chithanhdaica/Library/Logs/tradepilot-daily.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/chithanhdaica/Library/Logs/tradepilot-daily.log</string>
+</dict>
+</plist>
