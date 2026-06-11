@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import sys
-from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -21,18 +20,10 @@ _BACKEND = _REPO / "backend"
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
-from services.stock_seed import VN30  # noqa: E402 — sau sys.path setup
+from services.inference import next_trading_day  # noqa: E402 — sau sys.path setup
+from services.stock_seed import VN30  # noqa: E402
 
 MODEL_VERSION = "stub_v0"  # KHÔNG phải TFT — phân biệt rõ với tft_v1
-
-
-def next_trading_day(d: date) -> date:
-    """Phiên giao dịch kế tiếp (T+1) — bỏ cuối tuần. KHÔNG bỏ lễ (xấp xỉ; accuracy job mới
-    khớp với phiên THẬT có trong price_history, không phụ thuộc giá trị này — xem ActualResult)."""
-    nxt = d + timedelta(days=1)
-    while nxt.weekday() >= 5:  # 5=thứ Bảy, 6=Chủ nhật
-        nxt += timedelta(days=1)
-    return nxt
 
 
 def stub_label(ma7: float, ma20: float) -> str:

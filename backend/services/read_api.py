@@ -58,6 +58,8 @@ def _gating_fields(pred) -> dict:
     }
 
 
+# Mã tồn tại nhưng CHƯA có prediction (mới thêm, chưa qua inference) — display vẫn phải là
+# trạng thái hợp lệ cho UI (badge render theo display, không chấp nhận None).
 _EMPTY_GATING = {
     "label": None,
     "confidence": None,
@@ -66,7 +68,7 @@ _EMPTY_GATING = {
     "probDiNgang": None,
     "isActionable": False,
     "threshold": None,
-    "display": None,
+    "display": DISPLAY_NO_SIGNAL,
     "modelVersion": None,
 }
 
@@ -337,12 +339,14 @@ async def get_accuracy(session: AsyncSession) -> dict:
         else None  # chưa có actual nào trên tập dám đoán → chưa chấm được
     )
 
+    # overall/byLabel/series giữ semantics cũ: chấm trên MỌI version (lịch sử đầy đủ);
+    # chỉ coverage/precision ở trên là theo version hiện hành.
     matched: list[tuple[date, bool, str]] = []  # (prediction_date, correct, predicted_label)
-    for sid, pdate, plabel, _mver, _act in preds:
-        actual = actual_map.get((sid, pdate))
+    for r in preds:
+        actual = actual_map.get((r.stock_id, r.prediction_date))
         if actual is None:
             continue
-        matched.append((pdate, actual == plabel, plabel))
+        matched.append((r.prediction_date, actual == r.label, r.label))
 
     if not matched:
         return {

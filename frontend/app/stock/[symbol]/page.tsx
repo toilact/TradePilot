@@ -73,7 +73,11 @@ export default async function StockPage({
                 <PredictionBadge label={p.display} size="lg" />
               </div>
               <div className="flex items-center gap-8">
-                <Metric label="Độ tin cậy" value={fmtConfidence(p.confidence)} />
+                {/* confidence/modelVersion null khi mã chưa có prediction (mới thêm, chưa inference) */}
+                <Metric
+                  label="Độ tin cậy"
+                  value={p.confidence != null ? fmtConfidence(p.confidence) : "—"}
+                />
                 {p.threshold != null && (
                   <Metric label="Ngưỡng tín hiệu" value={fmtConfidence(p.threshold)} />
                 )}
@@ -82,7 +86,7 @@ export default async function StockPage({
                   value={p.sentiment.toFixed(2)}
                   accent={p.sentiment >= 0 ? "#34d399" : "#fb7185"}
                 />
-                <Metric label="Model" value={p.modelVersion} />
+                <Metric label="Model" value={p.modelVersion ?? "—"} />
               </div>
             </div>
 

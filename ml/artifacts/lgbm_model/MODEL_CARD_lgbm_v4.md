@@ -63,6 +63,10 @@ chết, thêm lại M8). Chi tiết: notebook 05 cell cuối + TICKLIST M2 + gri
 
 - Gate M2 "tồn tại threshold ≥0.50/coverage ≥20% trên test" ĐẠT mạnh hơn v3.
 - Frontier đầy đủ (val + test, 0.40→0.80/0.01) trong `metrics_lgbm_v4.json`.
+- ⚠️ **PRODUCTION override (M3 — ADR 0002): threshold = 0.60**, KHÔNG dùng 0.40 trong
+  `metrics json` (rule val không transfer — test precision 0.503 ≈ baseline). Nguồn sự thật
+  production: `backend/services/inference.py::PRODUCTION_THRESHOLD` (ghi kèm mỗi prediction
+  vào cột `threshold`). Temperature vẫn đọc từ metrics json.
 
 ## Holdout 2026 H1 (vô nhiễm — không tune, đọc kỹ)
 
@@ -92,5 +96,7 @@ booster = lgb.Booster(model_file="ml/artifacts/lgbm_model/lgbm_v4.txt")
 probs = booster.predict(X[FEATURE_NAMES])  # [N,3] theo classes_order trong metrics JSON
 ```
 
-`classes_order`, `feature_names`, `temperature`, `threshold` đọc từ `metrics_lgbm_v4.json` —
-KHÔNG hardcode. Feature list lấy từ `backend/features/builder.py::LGBM_V4_FEATURES`.
+`classes_order`, `feature_names`, `temperature` đọc từ `metrics_lgbm_v4.json` — KHÔNG hardcode.
+Threshold production = `backend/services/inference.py::PRODUCTION_THRESHOLD` (0.60, ADR 0002 —
+threshold trong metrics json là output của rule trên val, không dùng cho production).
+Feature list lấy từ `backend/features/builder.py::LGBM_V4_FEATURES`.
