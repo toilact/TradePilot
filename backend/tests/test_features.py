@@ -8,8 +8,9 @@ import pytest
 from features.builder import FEATURE_COLS, LGBM_V4_FEATURES, build_features, load_training_frame
 from models.database import DailySentiment, PriceHistory, Stock
 
-# Feature v4 mới (grill 2026-06-11) — mỗi feature 1 case no-leakage riêng (TICKLIST M2).
-NEW_V4_FEATURES = ["ret_1d", "ret_5d", "abs_ret_1d", "vol_5", "vol_20", "dist_ma20", "ma_ratio"]
+# Mọi feature SỐ tính từ giá — mỗi feature 1 case no-leakage riêng (TICKLIST M2).
+# (sector static + sentiment join theo ngày không tính từ giá → không thể leak từ close tương lai.)
+PRICE_FEATURES = [f for f in FEATURE_COLS if f not in ("sentiment_agg", "news_count", "sector")]
 
 
 def _prices(closes: list[float], start: str = "2026-01-01") -> pd.DataFrame:
@@ -22,8 +23,9 @@ def _prices(closes: list[float], start: str = "2026-01-01") -> pd.DataFrame:
 # ── No-leakage (bất biến #1) ──────────────────────────────────────────────────
 
 
-def test_no_leakage_feature_independent_of_future():
-    """Feature hàng T KHÔNG đổi khi thay close của các ngày > T."""
+@pytest.mark.parametrize("feature", PRICE_FEATURES)
+def test_no_leakage_feature_independent_of_future(feature):
+    """Từng feature giá: giá trị hàng T bất biến khi đổi close các ngày > T."""
     closes = [float(i) for i in range(1, 31)]
     base = build_features(_prices(closes), pd.DataFrame())
 
@@ -31,21 +33,7 @@ def test_no_leakage_feature_independent_of_future():
     altered[25:] = [999.0, 998.0, 997.0, 996.0, 995.0]  # đổi tương lai (ngày > 24)
     changed = build_features(_prices(altered), pd.DataFrame())
 
-    feat = ["ma7", "ma20", "rsi14", "macd", "macd_signal"]
     # Hàng T=20 (idx 20) chỉ phụ thuộc quá khứ→20 → phải y hệt dù tương lai đổi.
-    pd.testing.assert_frame_equal(base.loc[:20, feat], changed.loc[:20, feat], check_dtype=False)
-
-
-@pytest.mark.parametrize("feature", NEW_V4_FEATURES)
-def test_no_leakage_v4_feature(feature):
-    """Từng feature v4: giá trị hàng T bất biến khi đổi giá tương lai (ngày > T)."""
-    closes = [float(i) for i in range(1, 31)]
-    base = build_features(_prices(closes), pd.DataFrame())
-
-    altered = closes.copy()
-    altered[25:] = [999.0, 998.0, 997.0, 996.0, 995.0]  # đổi tương lai (ngày > 24)
-    changed = build_features(_prices(altered), pd.DataFrame())
-
     pd.testing.assert_series_equal(
         base.loc[:20, feature], changed.loc[:20, feature], check_dtype=False
     )
@@ -139,7 +127,7 @@ def test_sector_passthrough():
 
 def test_sector_default_none():
     df = build_features(_prices([10.0, 11.0]), pd.DataFrame())
-    assert df["sector"].isna().all() or df["sector"].tolist() == [None, None]
+    assert df["sector"].isna().all()
 
 
 # ── Sentiment join (ngày không tin → 0) ───────────────────────────────────────

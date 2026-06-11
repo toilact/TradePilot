@@ -25,11 +25,8 @@ _BACKEND = _REPO / "backend"
 if str(_BACKEND) not in sys.path:
     sys.path.insert(0, str(_BACKEND))
 
-VN30 = [
-    "ACB", "BCM", "BID", "BVH", "CTG", "FPT", "GAS", "GVR", "HDB", "HPG",
-    "MBB", "MSN", "MWG", "PLX", "POW", "SAB", "SHB", "SSB", "SSI", "STB",
-    "TCB", "TPB", "VCB", "VHM", "VIB", "VIC", "VJC", "VNM", "VPB", "VRE",
-]  # fmt: skip
+
+from services.stock_seed import VN30  # noqa: E402 — sau sys.path setup
 
 OUTPUT = _REPO / "ml" / "data" / "training_panel.csv"
 
