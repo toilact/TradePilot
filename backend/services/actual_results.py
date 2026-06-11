@@ -16,12 +16,15 @@ from __future__ import annotations
 from bisect import bisect_right
 from datetime import date
 
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.upsert import upsert
 from models.database import ActualResult, Prediction, PriceHistory
 from services.labeling import label_from_close
+
+logger = structlog.get_logger(__name__)
 
 
 async def fill_actual_results(session: AsyncSession) -> int:
@@ -67,10 +70,12 @@ async def fill_actual_results(session: AsyncSession) -> int:
         close_next = close_by_stock[sid][dates[i]]
         rows.append({"stock_id": sid, "date": t, "label": label_from_close(close_t, close_next)})
 
-    return await upsert(
+    written = await upsert(
         session,
         ActualResult,
         rows,
         index_elements=["stock_id", "date"],
         update_cols=["label"],
     )
+    logger.info("actual_results_filled", targets=len(targets), written=written)
+    return written
