@@ -1,0 +1,29 @@
+# Render Blueprint (M7) — backend API free tier.
+# Secret (sync: false) dán tay trong dashboard lần đầu; KHÔNG ghi giá trị vào file này.
+services:
+  - type: web
+    name: tradepilot-api
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    healthCheckPath: /healthz
+    autoDeploy: true # push main → deploy
+    envVars:
+      - key: DATABASE_URL # Supabase Session Pooler (IPv4), postgresql+asyncpg://
+        sync: false
+      - key: REDIS_URL # Upstash rediss:// (KHÔNG phải REST token)
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+      - key: APP_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: INFO
+      - key: ENABLE_SCHEDULER # pipeline chạy launchd trên Mac, không chạy trên Render
+        value: "false"
+      - key: ALLOWED_ORIGINS # domain Vercel production, dán sau khi có (vd https://tradepilot.vercel.app)
+        sync: false
+      - key: ALLOWED_ORIGIN_REGEX # preview deployments của đúng project này
+        value: ^https://tradepilot-.*\.vercel\.app$

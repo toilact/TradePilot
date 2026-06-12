@@ -5,6 +5,9 @@ import { Disclaimer } from "@/components/disclaimer";
 import { PredictionBadge } from "@/components/prediction-badge";
 import type { Label } from "@/lib/types";
 
+// M7: ISR — data đổi 1 lần/ngày (pipeline 16:05), page tĩnh che cold-start Render free
+export const revalidate = 3600;
+
 export default async function AccuracyPage() {
   const acc = await getAccuracy();
   const pct = (v: number) => `${Math.round(v * 100)}%`;
