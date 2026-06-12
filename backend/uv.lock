@@ -1460,8 +1460,8 @@ dependencies = [
     { name = "asyncpg" },
     { name = "beautifulsoup4" },
     { name = "fastapi" },
-    { name = "google-generativeai" },
     { name = "httpx" },
+    { name = "pandas" },
     { name = "psycopg2-binary" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -1471,7 +1471,6 @@ dependencies = [
     { name = "structlog" },
     { name = "tzdata" },
     { name = "uvicorn", extra = ["standard"] },
-    { name = "vnstock" },
 ]
 
 [package.dev-dependencies]
@@ -1485,6 +1484,10 @@ dev = [
 inference = [
     { name = "lightgbm" },
 ]
+pipeline = [
+    { name = "google-generativeai" },
+    { name = "vnstock" },
+]
 
 [package.metadata]
 requires-dist = [
@@ -1493,8 +1496,8 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.30" },
     { name = "beautifulsoup4", specifier = ">=4.12" },
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "google-generativeai", specifier = ">=0.8" },
     { name = "httpx", specifier = ">=0.27" },
+    { name = "pandas", specifier = ">=2.0" },
     { name = "psycopg2-binary", specifier = ">=2.9" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pydantic-settings", specifier = ">=2.6" },
@@ -1504,7 +1507,6 @@ requires-dist = [
     { name = "structlog", specifier = ">=26.1.0" },
     { name = "tzdata", specifier = ">=2024.1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
-    { name = "vnstock", specifier = ">=3.2" },
 ]
 
 [package.metadata.requires-dev]
@@ -1516,6 +1518,10 @@ dev = [
     { name = "ruff", specifier = ">=0.8" },
 ]
 inference = [{ name = "lightgbm", specifier = ">=4.5" }]
+pipeline = [
+    { name = "google-generativeai", specifier = ">=0.8" },
+    { name = "vnstock", specifier = ">=3.2" },
+]
 
 [[package]]
 name = "typing-extensions"

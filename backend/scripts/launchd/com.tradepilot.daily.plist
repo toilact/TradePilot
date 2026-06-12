@@ -21,6 +21,8 @@
     <string>run</string>
     <string>--group</string>
     <string>inference</string>
+    <string>--group</string>
+    <string>pipeline</string>
     <string>python</string>
     <string>-m</string>
     <string>scripts.run_daily_pipeline</string>

@@ -8,7 +8,10 @@ import time
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
 from logging_config import configure_logging, init_sentry
@@ -22,6 +25,7 @@ if init_sentry():
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402 — sau Sentry init (docs Sentry)
 
 from api import auth, news, predictions, stocks  # noqa: E402
+from models.database import get_session  # noqa: E402
 
 
 @asynccontextmanager
@@ -44,7 +48,8 @@ app = FastAPI(title="TradePilot API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Next.js dev
+    allow_origins=settings.allowed_origins_list,  # M7: env ALLOWED_ORIGINS (Vercel prod + dev)
+    allow_origin_regex=settings.allowed_origin_regex or None,  # preview tradepilot-*.vercel.app
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["X-Cache"],  # cho client cross-origin đọc được trạng thái cache (M6)
@@ -84,3 +89,24 @@ app.include_router(auth.router)
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "tradepilot-backend"}
+
+
+@app.get("/healthz")
+async def healthz(session: AsyncSession = Depends(get_session)):  # noqa: B008 — pattern FastAPI
+    """Health check production (M7): version + DB ping.
+
+    Render health check + cron-job.org keep-alive gọi route này.
+    DB chết → 503 để hệ thống ping bên ngoài báo động được.
+    """
+    try:
+        await session.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception:
+        logger.exception("healthz_db_ping_failed")
+        db_status = "error"
+    body = {
+        "status": "ok" if db_status == "ok" else "degraded",
+        "version": app.version,
+        "db": db_status,
+    }
+    return JSONResponse(body, status_code=200 if db_status == "ok" else 503)

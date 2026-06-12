@@ -36,6 +36,14 @@ jobs:
       - name: Ruff lint ml/
         run: uvx ruff check ml/
 
+  docker:
+    name: Backend (docker build-only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image (bắt lỗi Dockerfile trên PR — không push)
+        run: docker build -t tradepilot-api:ci backend/
+
   frontend:
     name: Frontend (eslint + tsc + build)
     runs-on: ubuntu-latest

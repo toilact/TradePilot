@@ -5,6 +5,9 @@ import { PredictionTable } from "@/components/prediction-table";
 import { Disclaimer } from "@/components/disclaimer";
 import { fmtConfidence } from "@/lib/format";
 
+// M7: ISR — data đổi 1 lần/ngày (pipeline 16:05), page tĩnh che cold-start Render free
+export const revalidate = 3600;
+
 export default async function Home() {
   const preds = await getPredictions();
   const today = new Date().toLocaleDateString("vi-VN", {
