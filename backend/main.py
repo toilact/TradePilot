@@ -21,7 +21,7 @@ if init_sentry():
 
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402 — sau Sentry init (docs Sentry)
 
-from api import auth, predictions, stocks  # noqa: E402
+from api import auth, news, predictions, stocks  # noqa: E402
 
 
 @asynccontextmanager
@@ -76,6 +76,7 @@ async def log_requests(request: Request, call_next):
 
 app.include_router(predictions.router)
 app.include_router(stocks.router)
+app.include_router(news.router)
 app.include_router(auth.router)
 
 

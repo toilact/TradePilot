@@ -182,3 +182,83 @@ async def test_accuracy_join_by_prediction_date_not_target(session_factory):
         await s.commit()
         acc = await read_api.get_accuracy(s)
     assert acc["series"] == []  # không khớp vì 10/6 ≠ prediction_date 9/6
+
+
+# --- /api/news (M6) ---
+
+
+async def _seed_news(factory):
+    """2 mã (VCB, FPT) + 2 bài: bài 1 nhắc CẢ HAI mã (N-N), bài 2 chỉ VCB, sentiment NULL."""
+    from datetime import datetime
+
+    from models.database import News, NewsStock
+
+    async with factory() as s:
+        vcb = Stock(symbol="VCB", name="Vietcombank", exchange="HSX", sector="Ngân hàng")
+        fpt = Stock(symbol="FPT", name="FPT Corp", exchange="HSX", sector="Công nghệ")
+        s.add_all([vcb, fpt])
+        await s.flush()
+        n1 = News(
+            title="VCB và FPT cùng tăng",
+            url="https://cafef.vn/n1",
+            source="cafef",
+            published_at=datetime(2026, 6, 10, 9, 0),
+            sentiment_score=0.5,
+        )
+        n2 = News(
+            title="VCB họp cổ đông",
+            url="https://cafef.vn/n2",
+            source="cafef",
+            published_at=datetime(2026, 6, 11, 9, 0),
+            sentiment_score=None,  # stub chưa chấm — API phải trả 0.0
+        )
+        s.add_all([n1, n2])
+        await s.flush()
+        s.add_all(
+            [
+                NewsStock(news_id=n1.id, stock_id=vcb.id),
+                NewsStock(news_id=n1.id, stock_id=fpt.id),
+                NewsStock(news_id=n2.id, stock_id=vcb.id),
+            ]
+        )
+        await s.commit()
+
+
+async def test_get_news_n_n_and_order(session_factory):
+    """1 bài nhiều mã qua news_stocks; sắp published_at desc; shape khớp NewsItem."""
+    await _seed_news(session_factory)
+    async with session_factory() as s:
+        vcb_news = await read_api.get_news(s, "vcb")  # lowercase → vẫn khớp
+        fpt_news = await read_api.get_news(s, "FPT")
+    assert [n["title"] for n in vcb_news] == ["VCB họp cổ đông", "VCB và FPT cùng tăng"]
+    assert [n["title"] for n in fpt_news] == ["VCB và FPT cùng tăng"]
+    item = vcb_news[1]
+    assert set(item) == {"title", "source", "publishedAt", "sentiment", "url"}
+    assert item["sentiment"] == 0.5
+    assert item["publishedAt"] == "2026-06-10T09:00:00"
+
+
+async def test_get_news_null_sentiment_is_zero(session_factory):
+    await _seed_news(session_factory)
+    async with session_factory() as s:
+        vcb_news = await read_api.get_news(s, "VCB")
+    assert vcb_news[0]["sentiment"] == 0.0  # NULL → 0.0, quy ước "không tin → 0"
+
+
+async def test_get_news_limit(session_factory):
+    await _seed_news(session_factory)
+    async with session_factory() as s:
+        vcb_news = await read_api.get_news(s, "VCB", limit=1)
+    assert len(vcb_news) == 1
+    assert vcb_news[0]["title"] == "VCB họp cổ đông"  # limit cắt SAU khi sắp desc
+
+
+async def test_get_news_unknown_symbol_none_vs_empty(session_factory):
+    """Mã không tồn tại → None (route 404); mã có nhưng chưa tin → []."""
+    await _seed_news(session_factory)
+    async with session_factory() as s:
+        assert await read_api.get_news(s, "XXX") is None
+        stock = Stock(symbol="HPG", name="Hòa Phát", exchange="HSX", sector="Thép")
+        s.add(stock)
+        await s.commit()
+        assert await read_api.get_news(s, "HPG") == []
