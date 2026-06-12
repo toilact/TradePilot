@@ -5,11 +5,13 @@ const nextConfig = {
   reactStrictMode: true,
 };
 
-// Không có SENTRY_AUTH_TOKEN → bỏ qua upload source map (build local/CI vẫn xanh);
-// runtime init vẫn gate theo NEXT_PUBLIC_SENTRY_DSN trong instrumentation-client.ts.
-export default withSentryConfig(nextConfig, {
-  silent: true,
-  webpack: { treeshake: { removeDebugLogging: true } },
-  widenClientFileUpload: false,
-  telemetry: false,
-});
+// Chỉ áp dụng withSentryConfig khi có SENTRY_AUTH_TOKEN (tránh lỗi build Vercel khi chưa cấu hình token Sentry)
+export default process.env.SENTRY_AUTH_TOKEN
+  ? withSentryConfig(nextConfig, {
+      silent: true,
+      webpack: { treeshake: { removeDebugLogging: true } },
+      widenClientFileUpload: false,
+      telemetry: false,
+    })
+  : nextConfig;
+
