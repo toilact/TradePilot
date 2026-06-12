@@ -16,6 +16,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import structlog
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 
 from config import settings
 
@@ -66,10 +68,17 @@ def get_client():
 
 
 def set_client(client) -> None:
-    """Inject client cho test (fakeredis) hoặc reset (None + initialized=False)."""
+    """Inject client cho test: fakeredis, hoặc None = mô phỏng không có REDIS_URL."""
     global _client, _client_initialized
     _client = client
-    _client_initialized = client is not None
+    _client_initialized = True
+
+
+def reset_client() -> None:
+    """Quên client đã init — get_client lần sau đọc lại settings (teardown test)."""
+    global _client, _client_initialized
+    _client = None
+    _client_initialized = False
 
 
 async def cached_json(
@@ -78,6 +87,8 @@ async def cached_json(
     """Trả (data, "HIT"|"MISS") — đọc cache trước, miss thì gọi producer rồi set.
 
     `key` PHẢI bắt đầu bằng KEY_PREFIX (để bust theo prefix không sót).
+    Kết quả producer qua `jsonable_encoder` (date/datetime/Decimal → JSON-native) vì
+    cả json.dumps lẫn JSONResponse đều KHÔNG tự encode như return-dict FastAPI mặc định.
     Mọi lỗi Redis → coi như miss, không raise.
     """
     assert key.startswith(KEY_PREFIX), f"cache key phải có prefix {KEY_PREFIX!r}: {key}"
@@ -89,7 +100,7 @@ async def cached_json(
                 return json.loads(raw), "HIT"
         except Exception as exc:
             logger.warning("cache_get_failed", key=key, error=str(exc))
-    data = await producer()
+    data = jsonable_encoder(await producer())
     if client is not None:
         try:
             await client.set(key, json.dumps(data), ex=ttl)
@@ -98,16 +109,24 @@ async def cached_json(
     return data, "MISS"
 
 
+async def cached_response(
+    key: str, ttl: int, producer: Callable[[], Awaitable[Any]]
+) -> JSONResponse:
+    """JSONResponse + header `X-Cache: HIT|MISS` — wrapper dùng chung cho mọi route đọc."""
+    data, status = await cached_json(key, ttl, producer)
+    return JSONResponse(content=data, headers={"X-Cache": status})
+
+
 async def bust_cache() -> int | None:
     """Xoá mọi key `tp:*` (cuối daily pipeline). Trả số key đã xoá, None nếu không có Redis.
 
-    SCAN thay vì KEYS (không block Redis); KHÔNG FLUSHDB — instance có thể dùng chung
-    cho việc khác sau này (rate-limit, session).
+    SCAN thay vì KEYS (không block Redis), gom 1 lệnh DEL (không round-trip từng key);
+    KHÔNG FLUSHDB — instance có thể dùng chung cho việc khác sau này (rate-limit, session).
     """
     client = get_client()
     if client is None:
         return None
-    deleted = 0
-    async for key in client.scan_iter(match=f"{KEY_PREFIX}*"):
-        deleted += await client.delete(key)
-    return deleted
+    keys = [key async for key in client.scan_iter(match=f"{KEY_PREFIX}*")]
+    if not keys:
+        return 0
+    return await client.delete(*keys)

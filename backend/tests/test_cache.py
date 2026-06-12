@@ -16,31 +16,39 @@ def fake_redis():
     client = FakeRedis(decode_responses=True)
     cache.set_client(client)
     yield client
-    # reset về trạng thái chưa init — test sau tự quyết định client của mình
-    cache._client = None
-    cache._client_initialized = False
+    cache.reset_client()
 
 
 @pytest.fixture
 def no_redis():
-    """Mô phỏng REDIS_URL rỗng: get_client trả None."""
-    cache._client = None
-    cache._client_initialized = True
+    """Mô phỏng REDIS_URL rỗng: client = None."""
+    cache.set_client(None)
     yield
-    cache._client_initialized = False
+    cache.reset_client()
 
 
-class _BrokenRedis:
-    """Redis hỏng: mọi thao tác raise — cached_json phải nuốt và degrade."""
+@pytest.fixture
+def broken_redis():
+    """Redis hỏng: mọi thao tác raise — cached_json/bust phải nuốt và degrade."""
 
-    async def get(self, key):
-        raise ConnectionError("redis down")
+    class _BrokenRedis:
+        async def get(self, key):
+            raise ConnectionError("redis down")
 
-    async def set(self, key, value, ex=None):
-        raise ConnectionError("redis down")
+        async def set(self, key, value, ex=None):
+            raise ConnectionError("redis down")
 
-    def scan_iter(self, match=None):
-        raise ConnectionError("redis down")
+        async def scan_iter(self, match=None):
+            # async generator đúng semantics redis.asyncio — lỗi nổ lúc iterate
+            raise ConnectionError("redis down")
+            yield  # pragma: no cover — đánh dấu đây là generator
+
+        async def delete(self, *keys):
+            raise ConnectionError("redis down")
+
+    cache.set_client(_BrokenRedis())
+    yield
+    cache.reset_client()
 
 
 async def test_miss_then_hit(fake_redis):
@@ -66,18 +74,25 @@ async def test_no_redis_degrades_to_producer(no_redis):
     assert (data, status) == ([1, 2], "MISS")
 
 
-async def test_broken_redis_degrades_not_raise():
-    cache.set_client(_BrokenRedis())
-    try:
+async def test_broken_redis_degrades_not_raise(broken_redis):
+    async def produce():
+        return {"ok": True}
 
-        async def produce():
-            return {"ok": True}
+    data, status = await cached_json(f"{KEY_PREFIX}t", 60, produce)
+    assert (data, status) == ({"ok": True}, "MISS")
 
-        data, status = await cached_json(f"{KEY_PREFIX}t", 60, produce)
-        assert (data, status) == ({"ok": True}, "MISS")
-    finally:
-        cache._client = None
-        cache._client_initialized = False
+
+async def test_date_in_producer_result_serializable(fake_redis):
+    """Producer trả date/datetime → jsonable_encoder lo (JSONResponse không tự encode)."""
+    from datetime import date
+
+    async def produce():
+        return {"d": date(2026, 6, 12)}
+
+    data1, _ = await cached_json(f"{KEY_PREFIX}t", 60, produce)
+    data2, status2 = await cached_json(f"{KEY_PREFIX}t", 60, produce)
+    assert data1 == data2 == {"d": "2026-06-12"}
+    assert status2 == "HIT"
 
 
 async def test_producer_exception_not_cached(fake_redis):
@@ -111,6 +126,22 @@ async def test_bust_no_redis_returns_none(no_redis):
     assert await bust_cache() is None
 
 
+async def test_bust_empty_returns_zero(fake_redis):
+    assert await bust_cache() == 0
+
+
+async def test_invalid_redis_url_degrades(monkeypatch):
+    """Dán nhầm REST token thay vì rediss://... → get_client trả None, không raise."""
+    from config import settings
+
+    cache.reset_client()
+    monkeypatch.setattr(settings, "redis_url", "khong-phai-url")
+    try:
+        assert cache.get_client() is None
+    finally:
+        cache.reset_client()
+
+
 # --- bước pipeline cache_bust (scheduler M6) ---
 
 
@@ -130,16 +161,19 @@ async def test_step_cache_bust_deletes(fake_redis):
     assert result.ok and "1" in result.detail
 
 
-async def test_step_cache_bust_redis_error_is_warning_not_fail():
-    cache.set_client(_BrokenRedis())
-    try:
-        from services.scheduler import _step_cache_bust
+async def test_step_cache_bust_redis_error_is_warning_not_fail(broken_redis):
+    from services.scheduler import _step_cache_bust
 
-        result = await _step_cache_bust()
-        assert result.ok and result.warning  # ⚠️ chứ không ❌ — chờ TTL tự hết
-    finally:
-        cache._client = None
-        cache._client_initialized = False
+    result = await _step_cache_bust()
+    assert result.ok and result.warning  # ⚠️ chứ không ❌ — chờ TTL tự hết
+
+
+def test_pipeline_has_cache_bust_last():
+    """Chốt contract M6: pipeline 6 bước, cache_bust CUỐI (bust sau khi data mới đã ghi)."""
+    from services.scheduler import PIPELINE_STEPS
+
+    names = [s.__name__.removeprefix("_step_") for s in PIPELINE_STEPS]
+    assert names == ["prices", "actual_results", "news", "sentiment", "inference", "cache_bust"]
 
 
 # --- X-Cache header ở tầng route ---
@@ -156,16 +190,3 @@ async def test_route_sets_x_cache_header(fake_redis, session_factory):
     assert resp1.headers["X-Cache"] == "MISS"
     assert resp2.headers["X-Cache"] == "HIT"
     assert json.loads(resp1.body) == json.loads(resp2.body)
-
-
-async def test_invalid_redis_url_degrades(monkeypatch):
-    """Dán nhầm REST token thay vì rediss://... → get_client trả None, không raise."""
-    from config import settings
-
-    cache._client = None
-    cache._client_initialized = False
-    monkeypatch.setattr(settings, "redis_url", "khong-phai-url")
-    try:
-        assert cache.get_client() is None
-    finally:
-        cache._client_initialized = False

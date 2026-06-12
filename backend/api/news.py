@@ -1,10 +1,9 @@
 """Endpoint tin tức theo mã — M6 (trang chi tiết hết mock 100%)."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cache import KEY_PREFIX, TTL_NEWS, cached_json
+from cache import KEY_PREFIX, TTL_NEWS, cached_response
 from models.database import get_session
 from services import read_api
 
@@ -23,8 +22,7 @@ async def get_news(
         # 404 raise TRONG producer → không bị cache (mã sai không chiếm key 15ph)
         news = await read_api.get_news(session, sym, limit)
         if news is None:
-            raise HTTPException(status_code=404, detail=f"Không tìm thấy mã {symbol}")
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy mã {sym}")
         return news
 
-    data, status = await cached_json(f"{KEY_PREFIX}news:{sym}:{limit}", TTL_NEWS, produce)
-    return JSONResponse(content=data, headers={"X-Cache": status})
+    return await cached_response(f"{KEY_PREFIX}news:{sym}:{limit}", TTL_NEWS, produce)

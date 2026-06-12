@@ -47,6 +47,7 @@ app.add_middleware(
     allow_origins=["http://localhost:3000"],  # Next.js dev
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Cache"],  # cho client cross-origin đọc được trạng thái cache (M6)
 )
 
 

@@ -1,10 +1,9 @@
 """Endpoint dự đoán — đọc DB thật (Phase 1.4) + Redis cache TTL 1h (M6)."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cache import KEY_PREFIX, TTL_PREDICTIONS, cached_json
+from cache import KEY_PREFIX, TTL_PREDICTIONS, cached_response
 from models.database import get_session
 from services import read_api
 
@@ -21,10 +20,7 @@ async def get_predictions(
         async def produce_all():
             return await read_api.list_predictions(session)
 
-        data, status = await cached_json(
-            f"{KEY_PREFIX}predictions:all", TTL_PREDICTIONS, produce_all
-        )
-        return JSONResponse(content=data, headers={"X-Cache": status})
+        return await cached_response(f"{KEY_PREFIX}predictions:all", TTL_PREDICTIONS, produce_all)
 
     sym = symbol.upper()
 
@@ -32,8 +28,7 @@ async def get_predictions(
         # 404 raise TRONG producer → mã sai không bị cache
         pred = await read_api.get_prediction(session, sym)
         if pred is None:
-            raise HTTPException(status_code=404, detail=f"Không tìm thấy mã {symbol}")
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy mã {sym}")
         return pred
 
-    data, status = await cached_json(f"{KEY_PREFIX}predictions:{sym}", TTL_PREDICTIONS, produce_one)
-    return JSONResponse(content=data, headers={"X-Cache": status})
+    return await cached_response(f"{KEY_PREFIX}predictions:{sym}", TTL_PREDICTIONS, produce_one)
