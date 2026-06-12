@@ -7,6 +7,7 @@ Thứ tự (mỗi bước try/except RIÊNG — 1 bước fail không giết pip
   3. news            — crawl RSS + trang CafeF từng mã (lịch sự, delay 1s)
   4. sentiment       — score_news (stub trả 0 — M8 thay PhoBERT) + daily_sentiment
   5. inference       — lgbm_v4 + gating (cần `uv run --group inference`)
+  6. cache_bust      — xoá Redis `tp:*` để web phục vụ data mới ngay (M6; không Redis → skip)
 Cuối cùng: Telegram tổng kết (kèm ⚠️ khi crawl 0 tin / ❌ khi bước fail).
 
 Bất biến chống leakage: inference ngày T chỉ dùng tin published_at ≤ 16:00 phiên T.
@@ -129,12 +130,31 @@ async def _step_inference() -> StepResult:
     return StepResult("inference", True, f"{n} predictions @ {latest}, actionable {actionable}")
 
 
+async def _step_cache_bust() -> StepResult:
+    """Xoá cache `tp:*` để web phục vụ predictions/news MỚI ngay (M6 — TTL chỉ là lưới an toàn).
+
+    Tự bắt lỗi Redis → warning (không ❌): cache bust fail thì data cũ sống thêm tối đa
+    1 TTL, không đáng coi là pipeline fail.
+    """
+    from cache import bust_cache
+
+    try:
+        deleted = await bust_cache()
+    except Exception as exc:
+        logger.warning("cache_bust_failed", error=str(exc))
+        return StepResult("cache_bust", True, f"Redis lỗi — chờ TTL tự hết: {exc}", warning=True)
+    if deleted is None:
+        return StepResult("cache_bust", True, "skip — không có REDIS_URL")
+    return StepResult("cache_bust", True, f"xoá {deleted} key")
+
+
 PIPELINE_STEPS = (
     _step_prices,
     _step_actual_results,
     _step_news,
     _step_sentiment,
     _step_inference,
+    _step_cache_bust,
 )
 
 

@@ -10,7 +10,7 @@ import {
 import type { AccuracySummary, NewsItem, Prediction, PricePoint } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-// Phase 1.4: dùng API thật. getNews vẫn fallback mock (chưa có endpoint tin).
+// Phase 1.4 + M6: mọi hàm dùng API thật (getNews hết mock — endpoint /api/news).
 // CI build không có backend → NEXT_PUBLIC_CI_BUILD=1 buộc dùng mock để `next build` xanh.
 const USE_MOCK = process.env.NEXT_PUBLIC_CI_BUILD === "1";
 
@@ -40,9 +40,14 @@ export async function getHistory(symbol: string): Promise<PricePoint[]> {
   return res.json();
 }
 
-export async function getNews(_symbol: string): Promise<NewsItem[]> {
+export async function getNews(symbol: string): Promise<NewsItem[]> {
   if (USE_MOCK) return MOCK_NEWS;
-  return MOCK_NEWS; // TODO: endpoint tin tức theo mã
+  const res = await fetch(`${API_URL}/api/news?symbol=${symbol}&limit=10`, {
+    next: { revalidate: 300 },
+  });
+  if (res.status === 404) return []; // mã không tồn tại → trang đã notFound() qua getPrediction
+  if (!res.ok) throw new Error("Không tải được tin tức");
+  return res.json();
 }
 
 export async function getAccuracy(): Promise<AccuracySummary> {

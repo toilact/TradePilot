@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.database import (
     ActualResult,
     DailySentiment,
+    News,
+    NewsStock,
     Prediction,
     PriceHistory,
     Stock,
@@ -284,6 +286,38 @@ async def get_history(session: AsyncSession, symbol: str) -> list[dict]:
             "sentiment": sent_by_date.get(d, 0.0),
         }
         for d, c in prices
+    ]
+
+
+async def get_news(session: AsyncSession, symbol: str, limit: int = 10) -> list[dict] | None:
+    """Tin mới nhất của 1 mã (join news–news_stocks, published_at desc) khớp NewsItem frontend.
+
+    None nếu mã không tồn tại (route trả 404 — phân biệt với mã có nhưng chưa có tin → []).
+    `sentiment_score` NULL (stub chưa chấm — M8) → 0.0, nhất quán quy ước "không tin → 0".
+    """
+    stock = (
+        await session.execute(select(Stock).where(Stock.symbol == symbol.upper()))
+    ).scalar_one_or_none()
+    if stock is None:
+        return None
+    rows = (
+        await session.execute(
+            select(News)
+            .join(NewsStock, NewsStock.news_id == News.id)
+            .where(NewsStock.stock_id == stock.id)
+            .order_by(News.published_at.desc())
+            .limit(limit)
+        )
+    ).scalars()
+    return [
+        {
+            "title": n.title,
+            "source": n.source,
+            "publishedAt": n.published_at.isoformat(),
+            "sentiment": float(n.sentiment_score) if n.sentiment_score is not None else 0.0,
+            "url": n.url,
+        }
+        for n in rows
     ]
 
 

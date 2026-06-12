@@ -1,8 +1,9 @@
-"""Endpoint dự đoán — đọc DB thật (Phase 1.4). Chưa Redis cache (tối ưu sau)."""
+"""Endpoint dự đoán — đọc DB thật (Phase 1.4) + Redis cache TTL 1h (M6)."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cache import KEY_PREFIX, TTL_PREDICTIONS, cached_response
 from models.database import get_session
 from services import read_api
 
@@ -15,8 +16,19 @@ async def get_predictions(
     session: AsyncSession = Depends(get_session),
 ):
     if symbol is None:
-        return await read_api.list_predictions(session)
-    pred = await read_api.get_prediction(session, symbol)
-    if pred is None:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy mã {symbol}")
-    return pred
+
+        async def produce_all():
+            return await read_api.list_predictions(session)
+
+        return await cached_response(f"{KEY_PREFIX}predictions:all", TTL_PREDICTIONS, produce_all)
+
+    sym = symbol.upper()
+
+    async def produce_one():
+        # 404 raise TRONG producer → mã sai không bị cache
+        pred = await read_api.get_prediction(session, sym)
+        if pred is None:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy mã {sym}")
+        return pred
+
+    return await cached_response(f"{KEY_PREFIX}predictions:{sym}", TTL_PREDICTIONS, produce_one)
