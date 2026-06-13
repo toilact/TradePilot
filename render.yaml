@@ -23,7 +23,7 @@ services:
         value: INFO
       - key: ENABLE_SCHEDULER # pipeline chạy launchd trên Mac, không chạy trên Render
         value: "false"
-      - key: ALLOWED_ORIGINS # domain Vercel production, dán sau khi có (vd https://tradepilot.vercel.app)
+      - key: ALLOWED_ORIGINS # domain Vercel production (https://trade-pilot-kato.vercel.app)
         sync: false
-      - key: ALLOWED_ORIGIN_REGEX # preview deployments của đúng project này
-        value: ^https://tradepilot-.*\.vercel\.app$
+      - key: ALLOWED_ORIGIN_REGEX # preview deployments của đúng project này (trade-pilot-kato-*)
+        value: ^https://trade-pilot-kato-.*\.vercel\.app$
