@@ -5,7 +5,7 @@ Thứ tự (mỗi bước try/except RIÊNG — 1 bước fail không giết pip
   2. actual_results  — chấm prediction hôm qua (cần close HÔM NAY → phải sau bước 1;
                        vẫn trước inference, đúng tinh thần "chấm trước khi ghi mới")
   3. news            — crawl RSS + trang CafeF từng mã (lịch sự, delay 1s)
-  4. sentiment       — score_news (stub trả 0 — M8 thay PhoBERT) + daily_sentiment
+  4. sentiment       — score_news (PhoBERT nếu có artifact, không thì 0.0) + daily_sentiment
   5. inference       — lgbm_v4 + gating (cần `uv run --group inference`)
   6. cache_bust      — xoá Redis `tp:*` để web phục vụ data mới ngay (M6; không Redis → skip)
 Cuối cùng: Telegram tổng kết (kèm ⚠️ khi crawl 0 tin / ❌ khi bước fail).
@@ -98,7 +98,7 @@ async def _step_sentiment() -> StepResult:
     days = 0
     for symbol in VN30:
         days += await build_daily_sentiment(symbol)
-    return StepResult("sentiment", True, f"chấm {scored} tin (stub=0), gộp {days} ngày-mã")
+    return StepResult("sentiment", True, f"chấm {scored} tin, gộp {days} ngày-mã")
 
 
 async def _step_inference() -> StepResult:

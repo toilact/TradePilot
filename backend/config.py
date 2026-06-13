@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     redis_url: str = ""
     openai_api_key: str = ""
     gemini_api_key: str = ""
+    # Autolabel M8: key phụ để xoay vòng khi key chính hết quota/NGÀY (free tier ~20 req/ngày).
+    gemini_api_key_2: str = ""
+    gemini_api_key_3: str = ""
     app_env: str = "development"
     log_level: str = "INFO"
     # Observability (M4) — rỗng = tắt, app vẫn chạy bình thường
@@ -28,6 +31,13 @@ class Settings(BaseSettings):
     @property
     def allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
+
+    @property
+    def gemini_api_keys(self) -> list[str]:
+        """Tất cả Gemini key (chính + phụ), khử rỗng/trùng, giữ thứ tự — để xoay vòng quota."""
+        seen: set[str] = set()
+        keys = [self.gemini_api_key, self.gemini_api_key_2, self.gemini_api_key_3]
+        return [k for k in (k.strip() for k in keys) if k and not (k in seen or seen.add(k))]
 
     @property
     def sync_database_url(self) -> str:
