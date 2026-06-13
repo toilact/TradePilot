@@ -85,6 +85,19 @@ CONFIGS = {
         "test_end": "2026-01-01",  # test = 2025 (so táo-táo v3); 2026 báo cáo riêng làm holdout
         "holdout_start": "2026-01-01",  # holdout vô nhiễm — báo cáo, KHÔNG chọn threshold
     },
+    # v5 = v4 + sentiment THẬT (PhoBERT v3, daily_sentiment re-score 3960 tin). CÙNG split v4 để so
+    # táo-táo: chênh lệch macro-F1 = đóng góp ròng của sentiment. Sentiment thưa (đa số ngày 0 tin)
+    # → kỳ vọng cải thiện nhỏ; frontier v5 vs v4 quyết định có wire production hay không (bước E).
+    "lgbm_v5": {
+        "features": [f for f in LGBM_V4_FEATURES if f != "sector"]
+        + ["sentiment_agg", "news_count", "sector"],
+        "categorical": ["sector"],
+        "train_start": "2010-01-01",
+        "train_end": "2024-01-01",
+        "val_end": "2025-01-01",
+        "test_end": "2026-01-01",
+        "holdout_start": "2026-01-01",
+    },
 }
 CFG = CONFIGS[MODEL_VERSION]
 FEATURES = CFG["features"]

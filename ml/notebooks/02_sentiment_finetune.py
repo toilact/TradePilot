@@ -5,16 +5,17 @@
 # Fine-tune `vinai/phobert-base` phân loại sentiment tin chứng khoán VN: **pos / neu / neg**.
 #
 # **CÁCH DÙNG:** copy-paste TỪNG CELL (`# %%`) vào Kaggle Notebook, bật GPU (T4), chạy tuần tự.
-# Data: `sentiment_labeled.csv` (title,label) từ `backend/scripts/autolabel_sentiment.py` (đã
-# soát qua `validate_labels.py`), upload lên Kaggle Dataset.
+# Data: `sentiment_labeled.csv` (title,label) — autolabel LLM + **tự label thủ công theo rubric**
+# (`ml/data/LABELING_RUBRIC.md`), soát qua `validate_labels.py`, upload lên Kaggle Dataset.
 #
 # ## ⚠️ GIỚI HẠN DATA (đọc trước khi kỳ vọng)
-# Data 670 title, label theo rubric `ml/data/LABELING_RUBRIC.md` (góc A: tác động giá mã T+1;
-# ngưỡng bảo thủ → mặc định neu). **Mất cân bằng**: pos 307 / neu 239 / **neg 124** (~18%) — neg đã
-# cào dày thêm (M8 part D: firecrawl tin tiêu cực, gấp đôi từ 62). Đã xử lý bằng class weight; neg vẫn
-# là lớp yếu → nếu macro-F1 chưa đạt gate 0.75, cào thêm neg đa dạng rồi train lại, KHÔNG nới rubric
-# để ép neg (đầu độc nhãn). Với neg ~25 mẫu ở val (20%), macro-F1 vẫn nhiễu — cân nhắc Stratified
-# K-Fold (Cell 3 có note). Bản trước (583 title, neg 62) đạt macro-F1 0.6468 — neg F1 0.46 kéo tụt.
+# Data **1420 title**, label theo rubric `ml/data/LABELING_RUBRIC.md` (góc A: tác động giá mã T+1;
+# ngưỡng bảo thủ → mặc định neu). **Mất cân bằng**: pos 663 / neu 559 / **neg 198** (~14%) — gấp đôi
+# từ 670 (M8 part D: `backend/scripts/crawl_deep.py` phân trang CafeF `<mã>/trang-N.html` + tự label
+# 750 title mới). Đã xử lý bằng class weight; neg vẫn là lớp yếu → nếu macro-F1 chưa đạt gate 0.75,
+# cào thêm neg (giai đoạn thị trường giảm) rồi train lại, KHÔNG nới rubric để ép neg (đầu độc nhãn).
+# neg val ~40 mẫu (20%) → macro-F1 ổn định hơn trước nhưng vẫn có sai số. Bản v2 (670 title, neg 124)
+# đạt macro-F1 0.7045 (neg F1 0.64) — vẫn dưới gate; v1 (583, neg 62) 0.6468.
 #
 # ## ⚠️ WORD SEGMENTATION (quyết định v1: KHÔNG segment)
 # PhoBERT gốc khuyến nghị tách từ bằng VnCoreNLP. **v1 CỐ Ý tokenize TRỰC TIẾP** (cả train lẫn
@@ -281,7 +282,7 @@ model.save_pretrained(OUT)  # lưu cả id2label/label2id → backend đọc đ�
 tokenizer.save_pretrained(OUT)
 
 metrics = {
-    "model_version": "phobert_v2",  # v1 = 583 title/neg62/F1 0.6468; v2 = 670 title/neg124 + load_best
+    "model_version": "phobert_v3",  # v1=583/neg62/F1 0.6468; v2=670/neg124/F1 0.7045; v3=1420/neg198 (crawl_deep+self-label)
     "base_model": MODEL_NAME,
     "n_train": int(len(train_df)),
     "n_val": int(len(val_df)),
