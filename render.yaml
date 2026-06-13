@@ -2,7 +2,7 @@
 # Secret (sync: false) dán tay trong dashboard lần đầu; KHÔNG ghi giá trị vào file này.
 services:
   - type: web
-    name: tradepilot-api
+    name: trade-pilot-api-3921
     runtime: docker
     plan: free
     region: singapore

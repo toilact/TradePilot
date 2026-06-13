@@ -49,7 +49,7 @@ app = FastAPI(title="TradePilot API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins_list,  # M7: env ALLOWED_ORIGINS (Vercel prod + dev)
-    allow_origin_regex=settings.allowed_origin_regex or None,  # preview tradepilot-*.vercel.app
+    allow_origin_regex=settings.allowed_origin_regex or None,  # preview trade-pilot-kato-*.vercel.app
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["X-Cache"],  # cho client cross-origin đọc được trạng thái cache (M6)
