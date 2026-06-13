@@ -5,16 +5,17 @@
 # Fine-tune `vinai/phobert-base` phân loại sentiment tin chứng khoán VN: **pos / neu / neg**.
 #
 # **CÁCH DÙNG:** copy-paste TỪNG CELL (`# %%`) vào Kaggle Notebook, bật GPU (T4), chạy tuần tự.
-# Data: `sentiment_labeled.csv` (title,label) từ `backend/scripts/autolabel_sentiment.py` (đã
-# soát qua `validate_labels.py`), upload lên Kaggle Dataset.
+# Data: `sentiment_labeled.csv` (title,label) — autolabel LLM + **tự label thủ công theo rubric**
+# (`ml/data/LABELING_RUBRIC.md`), soát qua `validate_labels.py`, upload lên Kaggle Dataset.
 #
 # ## ⚠️ GIỚI HẠN DATA (đọc trước khi kỳ vọng)
-# Data 583 title, label theo rubric `ml/data/LABELING_RUBRIC.md` (góc A: tác động giá mã T+1;
-# ngưỡng bảo thủ → mặc định neu). **Mất cân bằng**: pos 305 / neu 216 / **neg 62** (~10%). Đã xử lý
-# bằng class weight, nhưng lớp `neg` mỏng → macro-F1 có thể KHÔNG đạt gate 0.75. Kết quả âm tính
-# CŨNG là kết quả (ghi model card) — khi đó: cào thêm tin TIÊU CỰC (M8 part D) rồi train lại,
-# KHÔNG nới rubric để ép neg (đầu độc nhãn). Với neg ~12 mẫu ở val (20%), macro-F1 nhiễu mạnh —
-# cân nhắc Stratified K-Fold (Cell 3 có note) để ước lượng ổn định hơn.
+# Data **1420 title**, label theo rubric `ml/data/LABELING_RUBRIC.md` (góc A: tác động giá mã T+1;
+# ngưỡng bảo thủ → mặc định neu). **Mất cân bằng**: pos 663 / neu 559 / **neg 198** (~14%) — gấp đôi
+# từ 670 (M8 part D: `backend/scripts/crawl_deep.py` phân trang CafeF `<mã>/trang-N.html` + tự label
+# 750 title mới). Đã xử lý bằng class weight; neg vẫn là lớp yếu → nếu macro-F1 chưa đạt gate 0.75,
+# cào thêm neg (giai đoạn thị trường giảm) rồi train lại, KHÔNG nới rubric để ép neg (đầu độc nhãn).
+# neg val ~40 mẫu (20%) → macro-F1 ổn định hơn trước nhưng vẫn có sai số. Bản v2 (670 title, neg 124)
+# đạt macro-F1 0.7045 (neg F1 0.64) — vẫn dưới gate; v1 (583, neg 62) 0.6468.
 #
 # ## ⚠️ WORD SEGMENTATION (quyết định v1: KHÔNG segment)
 # PhoBERT gốc khuyến nghị tách từ bằng VnCoreNLP. **v1 CỐ Ý tokenize TRỰC TIẾP** (cả train lẫn
@@ -183,6 +184,7 @@ print("class_weights (neg, neu, pos):", class_weights.tolist())
 from sklearn.metrics import accuracy_score, f1_score
 from transformers import (
     AutoModelForSequenceClassification,
+    EarlyStoppingCallback,
     Trainer,
     TrainingArguments,
 )
@@ -217,11 +219,15 @@ def compute_metrics(eval_pred):
 
 args = TrainingArguments(
     output_dir="/kaggle/working/phobert_out",
-    num_train_epochs=6,  # data nhỏ → train lâu hơn chút, eval theo epoch để theo dõi overfit
+    num_train_epochs=8,  # data nhỏ → train lâu hơn; load_best_model_at_end chống overfit cuối
     per_device_train_batch_size=16,
     per_device_eval_batch_size=32,
     eval_strategy="epoch",
-    save_strategy="no",
+    save_strategy="epoch",  # phải khớp eval_strategy để load_best_model_at_end hoạt động
+    save_total_limit=1,  # chỉ giữ checkpoint tốt nhất → không phình ổ Kaggle
+    load_best_model_at_end=True,  # lấy epoch macro-F1 cao nhất, KHÔNG phải epoch cuối (dễ overfit)
+    metric_for_best_model="f1_macro",
+    greater_is_better=True,
     learning_rate=2e-5,
     weight_decay=0.01,
     logging_steps=10,
@@ -233,6 +239,8 @@ trainer = WeightedTrainer(
     train_dataset=train_ds,
     eval_dataset=val_ds,
     compute_metrics=compute_metrics,
+    # dừng sớm nếu macro-F1 val không cải thiện sau 3 epoch (tiết kiệm GPU, chống overfit)
+    callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
 )
 trainer.train()
 
@@ -274,7 +282,7 @@ model.save_pretrained(OUT)  # lưu cả id2label/label2id → backend đọc đ�
 tokenizer.save_pretrained(OUT)
 
 metrics = {
-    "model_version": "phobert_v1",
+    "model_version": "phobert_v3",  # v1=583/neg62/F1 0.6468; v2=670/neg124/F1 0.7045; v3=1420/neg198 (crawl_deep+self-label)
     "base_model": MODEL_NAME,
     "n_train": int(len(train_df)),
     "n_val": int(len(val_df)),

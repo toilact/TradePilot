@@ -15,12 +15,16 @@ venv/
 
 # ML artifacts (model weights — không commit)
 ml/data/
+ml/artifacts/phobert_sentiment/*
+!ml/artifacts/phobert_sentiment/MODEL_CARD_phobert.md
 ml/artifacts/**/*.pt
 ml/artifacts/**/*.bin
 ml/artifacts/**/*.safetensors
 ml/artifacts/**/*.ckpt
 ml/artifacts/**/*.txt
 .ipynb_checkpoints/
+# Notebook PhoBERT: .py là nguồn sự thật (commit); .ipynb chỉ generated để import Kaggle (local)
+ml/notebooks/02_sentiment_finetune.ipynb
 
 # Node / Next.js
 node_modules/
