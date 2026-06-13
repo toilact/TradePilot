@@ -4,18 +4,22 @@
 #
 # Fine-tune `vinai/phobert-base` phân loại sentiment tin chứng khoán VN: **pos / neu / neg**.
 #
-# **CÁCH DÙNG:** copy-paste TỪNG CELL (`# %%`) vào Kaggle Notebook, bật GPU, chạy tuần tự.
-# Data: `sentiment_labeled.csv` (title,label) — export từ `scripts/autolabel_sentiment.py`,
-# upload lên Kaggle Dataset.
+# **CÁCH DÙNG:** copy-paste TỪNG CELL (`# %%`) vào Kaggle Notebook, bật GPU (T4), chạy tuần tự.
+# Data: `sentiment_labeled.csv` (title,label) từ `backend/scripts/autolabel_sentiment.py` (đã
+# soát qua `validate_labels.py`), upload lên Kaggle Dataset.
 #
-# ## ⚠️ GIỚI HẠN DATA
-# Data auto-label bằng LLM + crawl giới hạn (vài trăm title) → accuracy chỉ THAM KHẢO. Mục tiêu
-# là thông pipeline + có model thay stub score_text, KHÔNG kỳ vọng cao. Sau này nhiều data hơn
-# → train lại.
+# ## ⚠️ GIỚI HẠN DATA (đọc trước khi kỳ vọng)
+# Data auto-label LLM + crawl giới hạn (vài trăm title), **mất cân bằng** (pos ≫ neg). Đã xử lý
+# bằng class weight, nhưng lớp `neg` mỏng → macro-F1 có thể KHÔNG đạt gate 0.75. Kết quả âm tính
+# CŨNG là kết quả (ghi model card) — khi đó: cào thêm tin (nhất là tiêu cực) rồi train lại.
 #
 # ## ⚠️ WORD SEGMENTATION
-# PhoBERT gốc khuyến nghị tách từ bằng VnCoreNLP. Bản này dùng tokenizer TRỰC TIẾP (đơn giản,
-# chấp nhận giảm chất lượng). Nếu muốn chuẩn: segment title bằng py_vncorenlp trước khi tokenize.
+# PhoBERT gốc khuyến nghị tách từ bằng VnCoreNLP. Bản này tokenize TRỰC TIẾP (đơn giản, chấp nhận
+# giảm chất lượng). Muốn chuẩn: segment title bằng py_vncorenlp trước khi tokenize.
+#
+# ## Export khớp backend
+# `services/sentiment.py` đọc `model.config.id2label` để tìm index pos/neg (điểm = p_pos − p_neg).
+# Cell export lưu id2label/label2id qua `save_pretrained` → backend KHÔNG phụ thuộc thứ tự cứng.
 
 # %% [markdown]
 # ## Cell 1 — Cài deps
@@ -31,7 +35,7 @@ subprocess.run(
 print("✓ deps")
 
 # %% [markdown]
-# ## Cell 2 — Đọc data
+# ## Cell 2 — Đọc data + làm sạch
 
 # %%
 import glob
@@ -46,11 +50,14 @@ if not Path(CSV).exists():
     CSV = found[0]
     print(f"⚠️ Dùng CSV tự tìm: {CSV}")
 
-df = pd.read_csv(CSV).dropna(subset=["title", "label"])
-df = df[df["label"].isin(["pos", "neu", "neg"])].reset_index(drop=True)
-print(f"{len(df)} dòng. Phân bố:\n{df['label'].value_counts()}")
-
 LABELS = ["neg", "neu", "pos"]  # index cố định: neg=0, neu=1, pos=2
+df = pd.read_csv(CSV).dropna(subset=["title", "label"])
+df["title"] = df["title"].astype(str).str.strip()
+df = df[(df["title"] != "") & df["label"].isin(LABELS)]  # loại ERROR / rỗng
+df = df.drop_duplicates(subset=["title"]).reset_index(drop=True)
+print(f"{len(df)} dòng sạch (đã bỏ ERROR/rỗng/trùng). Phân bố:\n{df['label'].value_counts()}")
+assert df["label"].nunique() == 3, "Cần đủ 3 lớp pos/neu/neg để train."
+
 label2id = {lbl: i for i, lbl in enumerate(LABELS)}
 df["label_id"] = df["label"].map(label2id)
 
@@ -64,11 +71,16 @@ train_df, val_df = train_test_split(
     df, test_size=0.2, random_state=42, stratify=df["label_id"]
 )
 print(f"train={len(train_df)} val={len(val_df)}")
+print(f"train dist:\n{train_df['label'].value_counts()}")
+print(f"val dist:\n{val_df['label'].value_counts()}")
+if val_df["label"].value_counts().min() < 5:
+    print("⚠️ Lớp val < 5 mẫu — macro-F1 nhiễu mạnh, coi như tham khảo.")
 
 # %% [markdown]
 # ## Cell 4 — Tokenize (PhoBERT)
 
 # %%
+import torch
 from transformers import AutoTokenizer
 
 MODEL_NAME = "vinai/phobert-base"
@@ -81,9 +93,6 @@ def tokenize(texts):
 
 train_enc = tokenize(train_df["title"])
 val_enc = tokenize(val_df["title"])
-
-
-import torch
 
 
 class SentDataset(torch.utils.data.Dataset):
@@ -104,10 +113,21 @@ train_ds = SentDataset(train_enc, train_df["label_id"])
 val_ds = SentDataset(val_enc, val_df["label_id"])
 
 # %% [markdown]
-# ## Cell 5 — Fine-tune (GPU)
+# ## Cell 5 — Class weights (chống mất cân bằng pos ≫ neg)
 
 # %%
 import numpy as np
+
+counts = train_df["label_id"].value_counts().sort_index().to_numpy()
+# inverse-frequency: lớp hiếm có trọng số lớn → model không bỏ qua neg.
+class_weights = counts.sum() / (len(LABELS) * counts)
+class_weights = torch.tensor(class_weights, dtype=torch.float)
+print("class_weights (neg, neu, pos):", class_weights.tolist())
+
+# %% [markdown]
+# ## Cell 6 — Fine-tune (GPU, weighted CrossEntropy)
+
+# %%
 from sklearn.metrics import accuracy_score, f1_score
 from transformers import (
     AutoModelForSequenceClassification,
@@ -116,8 +136,22 @@ from transformers import (
 )
 
 model = AutoModelForSequenceClassification.from_pretrained(
-    MODEL_NAME, num_labels=3, id2label={i: lbl for lbl, i in label2id.items()}, label2id=label2id
+    MODEL_NAME,
+    num_labels=3,
+    id2label={i: lbl for lbl, i in label2id.items()},
+    label2id=label2id,
 )
+
+
+class WeightedTrainer(Trainer):
+    """CrossEntropy có class weight — chống collapse về lớp đa số (pos)."""
+
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        labels = inputs.pop("labels")
+        outputs = model(**inputs)
+        loss_fct = torch.nn.CrossEntropyLoss(weight=class_weights.to(outputs.logits.device))
+        loss = loss_fct(outputs.logits.view(-1, 3), labels.view(-1))
+        return (loss, outputs) if return_outputs else loss
 
 
 def compute_metrics(eval_pred):
@@ -131,7 +165,7 @@ def compute_metrics(eval_pred):
 
 args = TrainingArguments(
     output_dir="/kaggle/working/phobert_out",
-    num_train_epochs=4,
+    num_train_epochs=6,  # data nhỏ → train lâu hơn chút, eval theo epoch để theo dõi overfit
     per_device_train_batch_size=16,
     per_device_eval_batch_size=32,
     eval_strategy="epoch",
@@ -141,14 +175,17 @@ args = TrainingArguments(
     logging_steps=10,
     report_to="none",
 )
-trainer = Trainer(
-    model=model, args=args, train_dataset=train_ds, eval_dataset=val_ds,
+trainer = WeightedTrainer(
+    model=model,
+    args=args,
+    train_dataset=train_ds,
+    eval_dataset=val_ds,
     compute_metrics=compute_metrics,
 )
 trainer.train()
 
 # %% [markdown]
-# ## Cell 6 — Đánh giá (data nhỏ → tham khảo)
+# ## Cell 7 — Đánh giá + GATE pass/fail (macro-F1 ≥ 0.75)
 
 # %%
 from sklearn.metrics import classification_report, confusion_matrix
@@ -156,17 +193,53 @@ from sklearn.metrics import classification_report, confusion_matrix
 pred = trainer.predict(val_ds)
 y_pred = np.argmax(pred.predictions, axis=-1)
 y_true = val_df["label_id"].to_numpy()
-print("accuracy:", accuracy_score(y_true, y_pred))
+
+acc = accuracy_score(y_true, y_pred)
+macro_f1 = f1_score(y_true, y_pred, average="macro")
+per_class_f1 = f1_score(y_true, y_pred, average=None, labels=range(3))
+
+print("accuracy:", round(acc, 4))
+print("macro_f1:", round(macro_f1, 4))
 print("confusion_matrix:\n", confusion_matrix(y_true, y_pred, labels=range(3)))
 print(classification_report(y_true, y_pred, labels=range(3), target_names=LABELS, zero_division=0))
 
+GATE = 0.75
+all_classes_alive = bool((per_class_f1 > 0).all())
+passed = bool(macro_f1 >= GATE and all_classes_alive)
+print(f"\n{'✅ PASS' if passed else '❌ CHƯA ĐẠT'} — macro-F1 {macro_f1:.4f} (gate {GATE}), "
+      f"3 lớp F1>0: {all_classes_alive}")
+if not passed:
+    print("→ KHÔNG ship. Cào thêm tin (nhất là tiêu cực) + gán nhãn, train lại. Ghi model card.")
+
 # %% [markdown]
-# ## Cell 7 — Export (download về ml/artifacts/phobert_sentiment/)
+# ## Cell 8 — Export + metrics (chỉ chạy khi PASS, hoặc khi cố ý lưu baseline)
 
 # %%
+import json
+
 OUT = "/kaggle/working/phobert_sentiment"
-model.save_pretrained(OUT)
+model.save_pretrained(OUT)  # lưu cả id2label/label2id → backend đọc để map pos/neg
 tokenizer.save_pretrained(OUT)
-print(f"✓ model + tokenizer → {OUT}")
-print("⬇️ Download cả thư mục về ml/artifacts/phobert_sentiment/ ; backend score_text load từ đây.")
-print(f"label order (id→nhãn): {LABELS}  # neg=0, neu=1, pos=2 — backend map sang [-1,0,1]")
+
+metrics = {
+    "model_version": "phobert_v1",
+    "base_model": MODEL_NAME,
+    "n_train": int(len(train_df)),
+    "n_val": int(len(val_df)),
+    "gate": GATE,
+    "passed": passed,
+    "accuracy": round(float(acc), 4),
+    "macro_f1": round(float(macro_f1), 4),
+    "per_class_f1": {
+        lbl: round(float(f), 4) for lbl, f in zip(LABELS, per_class_f1, strict=True)
+    },
+    "label_order": LABELS,  # neg=0, neu=1, pos=2 — backend map p_pos − p_neg
+    "train_dist": {k: int(v) for k, v in train_df["label"].value_counts().items()},
+}
+with open(f"{OUT}/metrics_phobert.json", "w", encoding="utf-8") as f:
+    json.dump(metrics, f, ensure_ascii=False, indent=2)
+print(f"✓ model + tokenizer + metrics → {OUT}")
+print(json.dumps(metrics, ensure_ascii=False, indent=2))
+print("\n⬇️ Download CẢ thư mục phobert_sentiment → ml/artifacts/phobert_sentiment/ (gitignore).")
+print("   Backend score_text tự load từ đó; re-score: uv run --group inference "
+      "python -m services.sentiment --all")

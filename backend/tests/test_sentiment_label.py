@@ -14,6 +14,12 @@ def test_parse_labels_with_code_fence():
     assert parse_labels(raw, 2) == ["pos", "neu"]
 
 
+def test_parse_labels_ignores_preamble_before_array():
+    # LLM lỡ thêm giải thích/ví dụ trước mảng JSON → vẫn rút đúng mảng đầu tiên.
+    raw = 'Đây là kết quả phân loại:\n["pos","neg","neu"]'
+    assert parse_labels(raw, 3) == ["pos", "neg", "neu"]
+
+
 def test_parse_labels_unknown_label_falls_back_to_neu():
     # nhãn lạ → 'neu' (an toàn, không bịa chiều)
     assert parse_labels('["pos","weird","neg"]', 3) == ["pos", "neu", "neg"]

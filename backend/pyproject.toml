@@ -24,15 +24,19 @@ dependencies = [
 
 [dependency-groups]
 # Dep ML inference local — KHÔNG vào default install (CI/Render không cài; xem ADR 0002).
-# Cài: uv sync --group inference. M5 thêm torch (PhoBERT) vào nhóm này.
+# Cài: uv sync --group inference. torch/transformers (PhoBERT, M8) nặng ~2GB — chỉ máy chạy
+# inference (Mac) cài; backend là nguồn sự thật nên chỉ chấm điểm, không train.
 inference = [
     "lightgbm>=4.5",
+    "torch>=2.2",
+    "transformers>=4.40",
 ]
 # Dep pipeline daily chỉ chạy trên Mac (launchd) — KHÔNG vào image Render (M7, tiết kiệm ~500MB:
 # vnstock kéo matplotlib/plotly, google-generativeai kéo googleapiclient/grpc). Import đều lazy.
 pipeline = [
     "vnstock>=3.2",
     "google-generativeai>=0.8",  # auto-label sentiment (scripts/autolabel_sentiment)
+    "openai>=1.40",  # autolabel fallback khi Gemini hết quota
 ]
 dev = [
     "ruff>=0.8",
