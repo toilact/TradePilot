@@ -15,6 +15,7 @@ venv/
 
 # ML artifacts (model weights — không commit)
 ml/data/
+ml/artifacts/phobert_sentiment/
 ml/artifacts/**/*.pt
 ml/artifacts/**/*.bin
 ml/artifacts/**/*.safetensors
