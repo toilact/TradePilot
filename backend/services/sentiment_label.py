@@ -3,7 +3,8 @@
 CHỈ dùng để gán nhãn data train (ml/), KHÔNG ghi sentiment_score vào DB (đó là việc của
 PhoBERT sau khi fine-tune). Governance: người review mẫu sai sau khi auto-label.
 
-Nhãn: 3 lớp pos / neu / neg (tích cực / trung lập / tiêu cực) cho thị trường chứng khoán VN.
+Nhãn: 3 lớp pos / neu / neg theo rubric (góc tác động giá mã T+1, ngưỡng bảo thủ → mặc định neu;
+chi tiết ở `ml/data/LABELING_RUBRIC.md` — tài liệu nội bộ gitignored). Prompt dưới khớp rubric đó.
 Provider trừu tượng hoá (_Provider): Gemini đa key xoay vòng khi hết quota/key chết; hết đường
 → OpenAI (autolabel script tự fallback). SDK import trễ theo provider (group `pipeline`).
 
@@ -29,15 +30,26 @@ MODEL_NAME = "gemini-2.5-flash"  # Gemini mặc định (free tier ~20 req/NGÀY
 OPENAI_MODEL = "gpt-4o-mini"  # fallback khi Gemini hết quota — quota riêng, rẻ
 
 _PROMPT = """Bạn là chuyên gia phân tích tin tức chứng khoán Việt Nam. Phân loại CẢM XÚC
-(sentiment) của mỗi tiêu đề tin theo góc nhìn NHÀ ĐẦU TƯ với mã/thị trường được nhắc:
-- "pos": tích cực (giá/lợi nhuận/triển vọng tốt, mua ròng, tăng trưởng...)
-- "neg": tiêu cực (giảm, bán mạnh, thua lỗ, rủi ro, áp lực...)
-- "neu": trung lập (thông tin thuần, không rõ chiều, thủ tục/lịch sự kiện...)
+(sentiment) của mỗi tiêu đề theo **tác động lên GIÁ CỔ PHIẾU của mã được nhắc, ngắn hạn (T+1)**:
+- "pos": tín hiệu định hướng giá LÊN tường minh (lãi/kỷ lục, tăng/trần, mua ròng, chia cổ tức
+  tiền/cổ phiếu, nâng hạng, hưởng lợi rõ).
+- "neg": tín hiệu định hướng giá XUỐNG tường minh (lỗ, giảm/sàn, bán ròng/bán tháo, cổ đông lớn
+  thoái vốn, cảnh báo/rủi ro, áp lực cung).
+- "neu": KHÔNG có tín hiệu giá tường minh — tin thủ tục, huy động vốn/phát hành trái phiếu thường
+  lệ, bổ nhiệm/miễn nhiệm nhân sự, sự kiện/PR, clickbait không lộ chiều, chiều mơ hồ/yếu.
+
+QUY TẮC NGƯỠNG: **mặc định "neu"**; chỉ gán pos/neg khi tiêu đề có dấu hiệu định hướng giá TƯỜNG
+MINH. Tin nghiêng nhẹ một chiều nhưng tác động giá không rõ → neu (KHÔNG ép chiều).
+MULTI-MÃ: gán theo mã chính của tiêu đề; nếu đối xứng 2 chiều ("X tăng, Y giảm") → neu.
 
 Ví dụ:
 - "Vietcombank lãi kỷ lục quý 2" → pos
-- "Nhóm dầu khí bị bán mạnh, VN-Index giảm 15 điểm" → neg
-- "FPT chốt danh sách cổ đông trả cổ tức" → neu
+- "VRE chi 2.300 tỷ chia cổ tức tiền mặt" → pos
+- "Khối ngoại bán ròng 1.500 tỷ, cổ phiếu nào bị xả mạnh" → neg
+- "Cổ phiếu BIDV bất ngờ giảm sàn" → neg
+- "VPBank phát hành 1.000 tỷ trái phiếu" → neu (huy động vốn thường lệ)
+- "Lãnh đạo FPT được mua ESOP thấp hơn thị giá 90%" → neu (không định hướng giá T+1)
+- "Becamex miễn nhiệm Tổng giám đốc" → neu (nhân sự, trừ khi nêu bê bối)
 
 Trả về DUY NHẤT một mảng JSON các nhãn theo ĐÚNG thứ tự tiêu đề, vd: ["pos","neg","neu"].
 Số phần tử phải bằng số tiêu đề. KHÔNG giải thích.
