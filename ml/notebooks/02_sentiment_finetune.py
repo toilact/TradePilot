@@ -9,13 +9,19 @@
 # soát qua `validate_labels.py`), upload lên Kaggle Dataset.
 #
 # ## ⚠️ GIỚI HẠN DATA (đọc trước khi kỳ vọng)
-# Data auto-label LLM + crawl giới hạn (vài trăm title), **mất cân bằng** (pos ≫ neg). Đã xử lý
+# Data 583 title, label theo rubric `ml/data/LABELING_RUBRIC.md` (góc A: tác động giá mã T+1;
+# ngưỡng bảo thủ → mặc định neu). **Mất cân bằng**: pos 305 / neu 216 / **neg 62** (~10%). Đã xử lý
 # bằng class weight, nhưng lớp `neg` mỏng → macro-F1 có thể KHÔNG đạt gate 0.75. Kết quả âm tính
-# CŨNG là kết quả (ghi model card) — khi đó: cào thêm tin (nhất là tiêu cực) rồi train lại.
+# CŨNG là kết quả (ghi model card) — khi đó: cào thêm tin TIÊU CỰC (M8 part D) rồi train lại,
+# KHÔNG nới rubric để ép neg (đầu độc nhãn). Với neg ~12 mẫu ở val (20%), macro-F1 nhiễu mạnh —
+# cân nhắc Stratified K-Fold (Cell 3 có note) để ước lượng ổn định hơn.
 #
-# ## ⚠️ WORD SEGMENTATION
-# PhoBERT gốc khuyến nghị tách từ bằng VnCoreNLP. Bản này tokenize TRỰC TIẾP (đơn giản, chấp nhận
-# giảm chất lượng). Muốn chuẩn: segment title bằng py_vncorenlp trước khi tokenize.
+# ## ⚠️ WORD SEGMENTATION (quyết định v1: KHÔNG segment)
+# PhoBERT gốc khuyến nghị tách từ bằng VnCoreNLP. **v1 CỐ Ý tokenize TRỰC TIẾP** (cả train lẫn
+# serve `backend/services/sentiment.py`) → KHÔNG train/serve skew, KHÔNG kéo JVM vào deploy path.
+# Đánh đổi: dưới chất lượng tối ưu vài điểm F1. FUTURE WORK: nếu thêm py_vncorenlp thì PHẢI segment
+# ở CẢ inference (sentiment.py), nếu không sẽ skew. Bottleneck hiện tại là lượng data + neg mỏng,
+# không phải segmentation.
 #
 # ## Export khớp backend
 # `services/sentiment.py` đọc `model.config.id2label` để tìm index pos/neg (điểm = p_pos − p_neg).
@@ -62,7 +68,53 @@ label2id = {lbl: i for i, lbl in enumerate(LABELS)}
 df["label_id"] = df["label"].map(label2id)
 
 # %% [markdown]
+# ## Cell 2b — EDA + kiểm tra chất lượng data (text, KHÔNG feature engineering)
+#
+# Phân loại văn bản → model tự học đặc trưng; KHÔNG tạo cột feature, KHÔNG leak thời gian
+# (text tĩnh). EDA ở đây = phân bố lớp, độ dài tiêu đề, và **kiểm rò rỉ nhãn** (cùng tiêu đề
+# nhưng khác nhãn = mâu thuẫn nhãn → phải xử lý TRƯỚC split, nếu không train/val nhiễu).
+
+# %%
+# 1) Phân bố lớp (mất cân bằng → class weight ở Cell 5 + 6).
+dist = df["label"].value_counts()
+print("Phân bố lớp:")
+for lbl in LABELS:
+    n = int(dist.get(lbl, 0))
+    print(f"  {lbl:3s}: {n:4d} ({n / len(df) * 100:5.1f}%)")
+minority = dist.min()
+if minority < 80:
+    print(f"⚠️ Lớp hiếm nhất {minority} mẫu (<80) — gate macro-F1 0.75 rủi ro; "
+          "cào thêm tin lớp đó thay vì nới rubric.")
+
+# 2) Độ dài tiêu đề (ký tự + từ) theo lớp — sanity check, chọn max_length tokenizer.
+df["n_char"] = df["title"].str.len()
+df["n_word"] = df["title"].str.split().map(len)
+print("\nĐộ dài tiêu đề (ký tự / từ) theo lớp:")
+print(df.groupby("label")[["n_char", "n_word"]].agg(["mean", "max"]).round(1))
+print(f"Tiêu đề dài nhất: {df['n_word'].max()} từ "
+      f"(max_length=128 token ở Cell 4 phủ đủ — title ngắn).")
+
+# 3) RÒ RỈ NHÃN: cùng tiêu đề (đã chuẩn hoá) nhưng gán khác nhãn → mâu thuẫn.
+#    Đã drop_duplicates theo title thô ở Cell 2; check thêm sau khi chuẩn hoá khoảng trắng/hoa-thường.
+_norm = df["title"].str.lower().str.replace(r"\s+", " ", regex=True).str.strip()
+conflict = df.groupby(_norm)["label"].nunique()
+bad = conflict[conflict > 1].index
+print(f"\nTiêu đề (chuẩn hoá) trùng nhưng KHÁC nhãn: {len(bad)}")
+if len(bad):
+    print(df[_norm.isin(bad)][["title", "label"]])
+    print("⚠️ Xử lý mâu thuẫn nhãn trên TRƯỚC khi train (sửa nhãn trong sentiment_labeled.csv).")
+else:
+    print("✓ Không có mâu thuẫn nhãn.")
+
+df = df.drop(columns=["n_char", "n_word"])  # cột EDA tạm, không đưa vào train
+
+# %% [markdown]
 # ## Cell 3 — Split train/val (stratified — phân loại văn bản, KHÔNG walk-forward)
+#
+# Text tĩnh → split NGẪU NHIÊN stratified (không walk-forward; walk-forward chỉ cho time-series
+# giá). `neg` mỏng (~62) → val chỉ ~12 mẫu neg, macro-F1 1-lần-split nhiễu. Nếu muốn ước lượng ổn
+# định hơn: thay bằng `StratifiedKFold(n_splits=5)` rồi trung bình macro-F1 (đắt hơn 5× GPU). Bản
+# này giữ 1-lần-split cho đơn giản; đọc macro-F1 val như ước lượng có sai số, KHÔNG con số tuyệt đối.
 
 # %%
 from sklearn.model_selection import train_test_split
@@ -74,7 +126,7 @@ print(f"train={len(train_df)} val={len(val_df)}")
 print(f"train dist:\n{train_df['label'].value_counts()}")
 print(f"val dist:\n{val_df['label'].value_counts()}")
 if val_df["label"].value_counts().min() < 5:
-    print("⚠️ Lớp val < 5 mẫu — macro-F1 nhiễu mạnh, coi như tham khảo.")
+    print("⚠️ Lớp val < 5 mẫu — macro-F1 nhiễu mạnh, coi như tham khảo (cân nhắc K-Fold).")
 
 # %% [markdown]
 # ## Cell 4 — Tokenize (PhoBERT)
