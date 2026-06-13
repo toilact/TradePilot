@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # M5: APScheduler in-app (default TẮT — trigger chính là launchd 16:05 trên Mac)
     enable_scheduler: bool = False
     # M7: CORS production — danh sách origin cách nhau dấu phẩy; regex cho Vercel preview
-    # (rỗng = tắt; trên Render set ^https://tradepilot-.*\.vercel\.app$ — KHÔNG mở *.vercel.app)
+    # (rỗng = tắt; Render set ^https://trade-pilot-kato-.*\.vercel\.app$ — không mở *.vercel.app)
     allowed_origins: str = "http://localhost:3000"
     allowed_origin_regex: str = ""
 
