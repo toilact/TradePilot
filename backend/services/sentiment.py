@@ -10,8 +10,10 @@ Mắt xích (thứ tự): score_news (chấm điểm tin) → build_daily_sentim
 
 Bất biến:
   - Ngày không tin → sentiment_agg = 0 (feature builder điền; aggregate chỉ ghi ngày CÓ tin).
-  - Chống leakage: gộp theo NGÀY của published_at (đã chuẩn hoá giờ VN ở crawler).
+  - Chống leakage + không mất tin nghỉ: gộp theo NGÀY GIAO DỊCH HIỆU LỰC (effective_trading_day)
+    — tin >= 16:00 phiên T dồn sang phiên kế; tin cuối tuần/lễ dồn vào phiên giao dịch kế tiếp.
   - sentiment_agg ∈ [-1, 1]; chấm trên TITLE (content=None theo governance).
+  - sentiment_extreme = signed max-abs điểm trong ngày (input lớp gating M8 Option C).
 
 Chạy: cd backend && uv run --group inference python -m services.sentiment --all
 """
@@ -21,15 +23,23 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+from bisect import bisect_left
+from datetime import date as date_cls
+from datetime import datetime, timedelta
+from datetime import time as time_cls
 from pathlib import Path
 from typing import Protocol
 
 from sqlalchemy import select
 
 from db.upsert import upsert
-from models.database import DailySentiment, News, NewsStock, SessionLocal, Stock
+from models.database import DailySentiment, News, NewsStock, PriceHistory, SessionLocal, Stock
 
 logger = logging.getLogger(__name__)
+
+# Chống leakage: tin biết TRƯỚC 16:00 phiên T mới được dùng cho feature phiên T. Tin published
+# >= 16:00 (sau giờ chốt) → sớm nhất ảnh hưởng phiên giao dịch KẾ TIẾP. Xem effective_trading_day.
+MARKET_CLOSE = time_cls(16, 0)
 
 # Artifact PhoBERT (save_pretrained: model + tokenizer) — gitignore, chỉ tải về máy chạy
 # inference. Dep torch/transformers thuộc uv group `inference` (KHÔNG vào default install /
@@ -150,11 +160,56 @@ async def score_news(
     return len(rows)
 
 
-async def build_daily_sentiment(symbol: str) -> int:
-    """Gộp news.sentiment_score → daily_sentiment theo (stock_id, ngày). Trả số ngày đã ghi.
+def effective_trading_day(published_at: datetime, trading_days: list[date_cls]) -> date_cls | None:
+    """Tin `published_at` (naive, giờ VN) → ngày GIAO DỊCH sớm nhất được phép dùng tin đó.
 
-    sentiment_agg = trung bình điểm các tin trong ngày; news_count = số tin. Chỉ ghi ngày CÓ tin
-    (ngày không tin → 0, để feature builder TFT điền). Idempotent theo (stock_id, date).
+    Chống leakage: tin biết TRƯỚC 16:00 phiên T mới được dùng cho feature phiên T.
+      - published_at < 16:00  → ứng viên = ngày lịch của tin (có thể dùng ngay phiên đó).
+      - published_at >= 16:00 → ứng viên = ngày lịch + 1 (sau giờ chốt; T+1 mới biết).
+    Rồi ánh xạ ứng viên → ngày giao dịch ĐẦU TIÊN >= ứng viên trong `trading_days` (đã sort)
+    qua bisect_left — gom tin tối thứ Sáu / cuối tuần / lễ vào phiên kế tiếp (tránh left-join
+    drop ở builder vì ngày nghỉ không có giá). None nếu không còn phiên nào >= ứng viên
+    (tin sau phiên mới nhất → "chờ" tới khi phiên đó xuất hiện trong price_history).
+    """
+    candidate = published_at.date()
+    if published_at.time() >= MARKET_CLOSE:
+        candidate = candidate + timedelta(days=1)
+    i = bisect_left(trading_days, candidate)
+    if i >= len(trading_days):
+        return None
+    return trading_days[i]
+
+
+def aggregate_daily(rows: list[tuple[datetime, float]], trading_days: list[date_cls]) -> list[dict]:
+    """(published_at, score) → bản ghi daily_sentiment theo NGÀY GIAO DỊCH hiệu lực.
+
+    Hàm THUẦN (không DB) để test. Mỗi ngày: sentiment_agg = trung bình; news_count = số tin;
+    sentiment_extreme = điểm SIGNED MAX-ABS (tin |score| lớn nhất, giữ dấu) — input gating M8.
+    Tin ánh xạ về None (sau phiên mới nhất) bị bỏ qua.
+    """
+    by_day: dict[date_cls, list[float]] = {}
+    for published_at, score in rows:
+        day = effective_trading_day(published_at, trading_days)
+        if day is None:
+            continue
+        by_day.setdefault(day, []).append(score)
+    return [
+        {
+            "date": day,
+            "sentiment_agg": sum(scores) / len(scores),
+            "news_count": len(scores),
+            "sentiment_extreme": max(scores, key=abs),
+        }
+        for day, scores in by_day.items()
+    ]
+
+
+async def build_daily_sentiment(symbol: str) -> int:
+    """Gộp news.sentiment_score → daily_sentiment theo (stock_id, NGÀY GIAO DỊCH). Trả số ngày ghi.
+
+    Tin gom theo ngày giao dịch hiệu lực (effective_trading_day — cutoff 16:00 + dồn ngày nghỉ
+    vào phiên kế tiếp), KHÔNG theo ngày lịch thô (chống leakage + không mất tin cuối tuần).
+    Chỉ ghi ngày CÓ tin (ngày không tin → 0, builder điền). Idempotent theo (stock_id, date).
     """
     symbol = symbol.upper()
     async with SessionLocal() as session:
@@ -165,6 +220,18 @@ async def build_daily_sentiment(symbol: str) -> int:
             logger.warning("build_daily_sentiment: chưa seed mã %s", symbol)
             return 0
 
+        trading_days = (
+            (
+                await session.execute(
+                    select(PriceHistory.date)
+                    .where(PriceHistory.stock_id == stock_id)
+                    .order_by(PriceHistory.date)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
         rows = (
             await session.execute(
                 select(News.published_at, News.sentiment_score)
@@ -174,26 +241,15 @@ async def build_daily_sentiment(symbol: str) -> int:
             )
         ).all()
 
-        # Gộp theo ngày trong Python (trung lập dialect SQLite/PG).
-        by_day: dict[object, list[float]] = {}
-        for published_at, score in rows:
-            by_day.setdefault(published_at.date(), []).append(score)
-
         records = [
-            {
-                "stock_id": stock_id,
-                "date": day,
-                "sentiment_agg": sum(scores) / len(scores),
-                "news_count": len(scores),
-            }
-            for day, scores in by_day.items()
+            {"stock_id": stock_id, **rec} for rec in aggregate_daily(list(rows), list(trading_days))
         ]
         written = await upsert(
             session,
             DailySentiment,
             records,
             index_elements=["stock_id", "date"],
-            update_cols=["sentiment_agg", "news_count"],
+            update_cols=["sentiment_agg", "news_count", "sentiment_extreme"],
         )
     logger.info("build_daily_sentiment %s: %d ngày có tin", symbol, written)
     return written
