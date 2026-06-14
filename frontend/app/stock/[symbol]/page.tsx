@@ -6,6 +6,7 @@ import { PredictionBadge } from "@/components/prediction-badge";
 import { PriceChart } from "@/components/price-chart";
 import { StatCard } from "@/components/stat-card";
 import { Disclaimer } from "@/components/disclaimer";
+import { WatchlistButton } from "@/components/watchlist-button";
 import { changeColor, fmtConfidence, fmtPct, fmtPrice } from "@/lib/format";
 
 export async function generateStaticParams() {
@@ -54,9 +55,12 @@ export default async function StockPage({
               <p className="mt-1 text-white/65">{p.name}</p>
             </div>
           </div>
-          <div className="text-right">
-            <div className="font-mono text-3xl text-white">{fmtPrice(p.close)}</div>
-            <div className={`text-sm ${changeColor(p.changePct)}`}>{fmtPct(p.changePct)} phiên gần nhất</div>
+          <div className="flex flex-col items-end gap-3">
+            <div className="text-right">
+              <div className="font-mono text-3xl text-white">{fmtPrice(p.close)}</div>
+              <div className={`text-sm ${changeColor(p.changePct)}`}>{fmtPct(p.changePct)} phiên gần nhất</div>
+            </div>
+            <WatchlistButton symbol={p.symbol} withLabel />
           </div>
         </div>
       </Reveal>

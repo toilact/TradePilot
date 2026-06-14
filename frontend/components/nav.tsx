@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { AuthButton } from "./auth-button";
 
 const LINKS = [
   { href: "/", label: "Dự đoán" },
@@ -37,6 +38,11 @@ export function Nav() {
               {l.label}
             </Link>
           ))}
+        </div>
+
+        {/* Đăng nhập/đăng xuất Google (M9) */}
+        <div className="ml-1 hidden md:flex">
+          <AuthButton />
         </div>
 
         {/* CTA island button-in-button */}
@@ -90,6 +96,17 @@ export function Nav() {
             {l.label}
           </Link>
         ))}
+        <div
+          className="mt-6 transition-all duration-500 ease-fluid"
+          style={{
+            transitionDelay: open ? `${100 + LINKS.length * 60}ms` : "0ms",
+            transform: open ? "translateY(0)" : "translateY(3rem)",
+            opacity: open ? 1 : 0,
+          }}
+          onClick={() => setOpen(false)}
+        >
+          <AuthButton />
+        </div>
       </div>
     </header>
   );

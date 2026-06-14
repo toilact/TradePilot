@@ -41,6 +41,13 @@ export interface NewsItem {
   url: string;
 }
 
+// M9 — mã trong watchlist của user (backend trả sau khi verify JWT).
+export interface WatchlistItem {
+  symbol: string;
+  name: string;
+  exchange: string;
+}
+
 export interface AccuracyPoint {
   date: string;
   accuracy: number; // 0..1, rolling
