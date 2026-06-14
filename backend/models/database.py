@@ -93,6 +93,9 @@ class DailySentiment(Base):
     date: Mapped[date] = mapped_column(Date, index=True)
     sentiment_agg: Mapped[float] = mapped_column(Float, default=0.0)
     news_count: Mapped[int] = mapped_column(Integer, default=0)
+    # M8 Option C: điểm signed max-abs trong ngày (tin |score| lớn nhất, giữ dấu) — input cho
+    # lớp gating sentiment cực đoan ở inference. Nullable: bản ghi cũ chưa tính → None (≈ 0).
+    sentiment_extreme: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class Prediction(Base):
