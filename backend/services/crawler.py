@@ -144,12 +144,18 @@ def _parse_rss_time(raw: str | None) -> datetime | None:
     return dt
 
 
-def match_stocks(title: str, lookup: dict[str, int]) -> list[int]:
+def match_stocks(
+    title: str,
+    lookup: dict[str, int],
+    sector_lookup: dict[str, list[int]] | None = None,
+) -> list[int]:
     """Tìm các stock_id có symbol/tên xuất hiện trong `title`. 1 bài → nhiều mã (N-N).
 
     `lookup`: map key (symbol viết hoa HOẶC tên công ty lowercase) → stock_id.
     - symbol khớp dạng token nguyên (\\bVCB\\b) để tránh dính chuỗi con.
     - tên công ty khớp substring case-insensitive.
+    `sector_lookup` (M8 Pha 1a, tùy chọn): map ngành → [stock_id]; tin vĩ mô/ngành khớp keyword
+    ngành → union thêm MỌI mã cùng ngành (sector_map.match_sector_stock_ids). None → bỏ qua.
     Trả list stock_id duy nhất (giữ thứ tự xuất hiện ổn định).
     """
     title_l = title.lower()
@@ -159,6 +165,11 @@ def match_stocks(title: str, lookup: dict[str, int]) -> list[int]:
             if re.search(rf"\b{re.escape(key)}\b", title):
                 found[sid] = None
         elif key and key in title_l:  # tên công ty: substring lowercase
+            found[sid] = None
+    if sector_lookup:
+        from services.sector_map import match_sector_stock_ids
+
+        for sid in match_sector_stock_ids(title, sector_lookup):
             found[sid] = None
     return list(found)
 
@@ -314,6 +325,9 @@ async def crawl_rss(feeds: tuple[str, ...] = CAFEF_RSS_FEEDS) -> int:
     if not lookup:
         logger.warning("crawl_rss_no_stocks", hint="seed mã trước (vd crawl_news VCB)")
         return 0
+    from services.sector_map import load_sector_lookup
+
+    sector_lookup = await load_sector_lookup()  # M8 Pha 1a: tin ngành → toàn mã cùng ngành
 
     total_new = 0
     for feed in feeds:
@@ -322,7 +336,7 @@ async def crawl_rss(feeds: tuple[str, ...] = CAFEF_RSS_FEEDS) -> int:
             continue
         rows = parse_cafef_rss(xml)
         for r in rows:
-            r["stock_ids"] = match_stocks(r["title"], lookup)
+            r["stock_ids"] = match_stocks(r["title"], lookup, sector_lookup)
         matched = [r for r in rows if r["stock_ids"]]
         new_count = await _persist_multi(matched)
         total_new += new_count
