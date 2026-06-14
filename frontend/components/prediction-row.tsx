@@ -2,16 +2,23 @@ import Link from "next/link";
 import type { Prediction } from "@/lib/types";
 import { PredictionBadge } from "./prediction-badge";
 import { Sparkline } from "./sparkline";
+import { WatchlistButton } from "./watchlist-button";
 import { mockPriceSeries } from "@/lib/mock";
 import { changeColor, fmtConfidence, fmtPct, fmtPrice } from "@/lib/format";
 
 export function PredictionRow({ p }: { p: Prediction }) {
   const series = mockPriceSeries(p.symbol).map((d) => d.close);
   return (
-    <Link
-      href={`/stock/${p.symbol}`}
-      className="group grid grid-cols-[1fr_auto] items-center gap-4 rounded-[calc(2rem-0.75rem)] px-5 py-4 transition-colors duration-300 ease-fluid hover:bg-white/[0.03] md:grid-cols-[1.4fr_1fr_1fr_1.2fr_1fr] md:gap-6"
-    >
+    <div className="relative">
+      {/* Nút theo dõi (M9) — sibling của Link (KHÔNG nhúng trong <a>) để HTML hợp lệ + không điều hướng */}
+      <WatchlistButton
+        symbol={p.symbol}
+        className="absolute right-3 top-3 z-10"
+      />
+      <Link
+        href={`/stock/${p.symbol}`}
+        className="group grid grid-cols-[1fr_auto] items-center gap-4 rounded-[calc(2rem-0.75rem)] px-5 py-4 pr-12 transition-colors duration-300 ease-fluid hover:bg-white/[0.03] md:grid-cols-[1.4fr_1fr_1fr_1.2fr_1fr] md:gap-6 md:pr-5"
+      >
       {/* Mã + tên */}
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] font-display text-xs font-semibold tracking-tight text-white/80">
@@ -61,7 +68,8 @@ export function PredictionRow({ p }: { p: Prediction }) {
           </svg>
         </span>
       </div>
-    </Link>
+      </Link>
+    </div>
   );
 }
 

@@ -4,6 +4,8 @@ import "./globals.css";
 import { Nav } from "@/components/nav";
 import { SiteFooter } from "@/components/site-footer";
 import { MeshBackground } from "@/components/mesh-background";
+import { AuthSessionProvider } from "@/components/session-provider";
+import { WatchlistProvider } from "@/components/watchlist-provider";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin", "vietnamese"],
@@ -29,11 +31,15 @@ export default function RootLayout({
   return (
     <html lang="vi" className={`${jakarta.variable} ${space.variable}`}>
       <body className="min-h-[100dvh] font-sans antialiased">
-        <MeshBackground />
-        <div className="grain" aria-hidden />
-        <Nav />
-        <main className="relative">{children}</main>
-        <SiteFooter />
+        <AuthSessionProvider>
+          <WatchlistProvider>
+            <MeshBackground />
+            <div className="grain" aria-hidden />
+            <Nav />
+            <main className="relative">{children}</main>
+            <SiteFooter />
+          </WatchlistProvider>
+        </AuthSessionProvider>
       </body>
     </html>
   );

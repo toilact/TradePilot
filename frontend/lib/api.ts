@@ -7,7 +7,13 @@ import {
   MOCK_PREDICTIONS,
   mockPriceSeries,
 } from "./mock";
-import type { AccuracySummary, NewsItem, Prediction, PricePoint } from "./types";
+import type {
+  AccuracySummary,
+  NewsItem,
+  Prediction,
+  PricePoint,
+  WatchlistItem,
+} from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 // Phase 1.4 + M6: mọi hàm dùng API thật (getNews hết mock — endpoint /api/news).
@@ -56,4 +62,32 @@ export async function getAccuracy(): Promise<AccuracySummary> {
   const res = await fetch(`${API_URL}/api/accuracy`, { next: { revalidate: 3600 } });
   if (!res.ok) throw new Error("Không tải được độ chính xác");
   return res.json();
+}
+
+// --- Watchlist (M9) — gọi SAME-ORIGIN BFF proxy (/api/watchlist), KHÔNG phải API_URL.
+// Proxy đính kèm Bearer từ cookie HS256 → FastAPI. Chỉ chạy client-side (sau đăng nhập).
+// Per-user → cache: "no-store".
+export async function getWatchlist(): Promise<WatchlistItem[]> {
+  const res = await fetch("/api/watchlist", { cache: "no-store" });
+  if (res.status === 401) return []; // chưa đăng nhập
+  if (!res.ok) throw new Error("Không tải được watchlist");
+  return res.json();
+}
+
+export async function addToWatchlist(symbol: string): Promise<void> {
+  const res = await fetch("/api/watchlist", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbol }),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Không thêm được vào watchlist");
+}
+
+export async function removeFromWatchlist(symbol: string): Promise<void> {
+  const res = await fetch(`/api/watchlist?symbol=${encodeURIComponent(symbol)}`, {
+    method: "DELETE",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Không xoá được khỏi watchlist");
 }
