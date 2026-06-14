@@ -325,9 +325,6 @@ async def crawl_rss(feeds: tuple[str, ...] = CAFEF_RSS_FEEDS) -> int:
     if not lookup:
         logger.warning("crawl_rss_no_stocks", hint="seed mã trước (vd crawl_news VCB)")
         return 0
-    from services.sector_map import load_sector_lookup
-
-    sector_lookup = await load_sector_lookup()  # M8 Pha 1a: tin ngành → toàn mã cùng ngành
 
     total_new = 0
     for feed in feeds:
@@ -336,7 +333,9 @@ async def crawl_rss(feeds: tuple[str, ...] = CAFEF_RSS_FEEDS) -> int:
             continue
         rows = parse_cafef_rss(xml)
         for r in rows:
-            r["stock_ids"] = match_stocks(r["title"], lookup, sector_lookup)
+            # Sector-mapping (M8 Pha 1a) KHÔNG auto-broadcast ở crawl live: diagnostic kết luận
+            # sentiment không dùng cho dự đoán → giữ crawl đơn giản. Enrich qua remap_sectors.
+            r["stock_ids"] = match_stocks(r["title"], lookup)
         matched = [r for r in rows if r["stock_ids"]]
         new_count = await _persist_multi(matched)
         total_new += new_count
