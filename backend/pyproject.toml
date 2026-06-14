@@ -20,6 +20,7 @@ dependencies = [
     "psycopg2-binary>=2.9",
     "structlog>=26.1.0",
     "sentry-sdk[fastapi]>=2.62.0",
+    "pyjwt>=2.9",  # M9: verify JWT HS256 từ Auth.js (watchlist auth) — pure-python, nhẹ
 ]
 
 [dependency-groups]

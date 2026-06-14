@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # (rỗng = tắt; Render set ^https://trade-pilot-kato-.*\.vercel\.app$ — không mở *.vercel.app)
     allowed_origins: str = "http://localhost:3000"
     allowed_origin_regex: str = ""
+    # M9: secret ký/verify JWT session (HS256) — PHẢI trùng AUTH_SECRET phía frontend (Auth.js v5).
+    # Rỗng = chưa cấu hình auth → mọi request watchlist trả 401 (không crash app).
+    auth_secret: str = ""
 
     @property
     def allowed_origins_list(self) -> list[str]:
