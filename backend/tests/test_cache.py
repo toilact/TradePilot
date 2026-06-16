@@ -168,12 +168,21 @@ async def test_step_cache_bust_redis_error_is_warning_not_fail(broken_redis):
     assert result.ok and result.warning  # ⚠️ chứ không ❌ — chờ TTL tự hết
 
 
-def test_pipeline_has_cache_bust_last():
-    """Chốt contract M6: pipeline 6 bước, cache_bust CUỐI (bust sau khi data mới đã ghi)."""
+def test_pipeline_steps_order():
+    """Chốt contract M6+M10: pipeline 7 bước; cache_bust sau khi data mới đã ghi, rồi
+    drift_monitor cuối (chấm trên data vừa ghi, không ảnh hưởng cache)."""
     from services.scheduler import PIPELINE_STEPS
 
     names = [s.__name__.removeprefix("_step_") for s in PIPELINE_STEPS]
-    assert names == ["prices", "actual_results", "news", "sentiment", "inference", "cache_bust"]
+    assert names == [
+        "prices",
+        "actual_results",
+        "news",
+        "sentiment",
+        "inference",
+        "cache_bust",
+        "drift_monitor",
+    ]
 
 
 # --- X-Cache header ở tầng route ---

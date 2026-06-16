@@ -53,11 +53,18 @@ export interface AccuracyPoint {
   accuracy: number; // 0..1, rolling
 }
 
+// M10 — accuracy trượt 30 phiên theo từng model version (giám sát drift theo version).
+export interface VersionRolling {
+  version: string;
+  points: AccuracyPoint[];
+}
+
 export interface AccuracySummary {
   overall: number;
   last30: number;
   byLabel: Record<Label, number>;
   series: AccuracyPoint[];
+  rollingByVersion: VersionRolling[]; // M10 — multi-line chart theo version
   modelVersion: string;
   coverage: number; // % dự đoán dám đoán (is_actionable) của version hiện hành
   precisionActionable: number | null; // accuracy trên tập dám đoán (null = chưa có actual)

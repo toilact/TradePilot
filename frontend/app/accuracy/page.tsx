@@ -12,18 +12,33 @@ export default async function AccuracyPage() {
   const acc = await getAccuracy();
   const pct = (v: number) => `${Math.round(v * 100)}%`;
 
-  // chart đường accuracy (data thật có thể chưa có series — chấm cần actual T+1)
-  const hasSeries = acc.series.length >= 2;
+  // M10 — chart accuracy trượt 30 phiên ĐA-ĐƯỜNG theo version (production = gold, version cũ = mờ).
+  // Data thật có thể chưa đủ (chấm cần actual T+1) → degrade gracefully về empty-state.
+  const versions = acc.rollingByVersion ?? [];
+  const allPts = versions.flatMap((v) => v.points);
+  const hasChart = allPts.length >= 2;
   const W = 760;
   const H = 180;
-  const vals = acc.series.map((s) => s.accuracy);
-  const min = Math.min(...vals) - 0.02;
-  const max = Math.max(...vals) + 0.02;
+  const allDates = Array.from(new Set(allPts.map((p) => p.date))).sort();
+  const xIndex = new Map(allDates.map((d, i) => [d, i] as const));
+  const accVals = allPts.map((p) => p.accuracy);
+  const min = Math.min(...accVals) - 0.02;
+  const max = Math.max(...accVals) + 0.02;
   const span = max - min || 1;
-  const stepX = W / (acc.series.length - 1);
-  const pts = acc.series.map((s, i) => [i * stepX, H - ((s.accuracy - min) / span) * (H - 16) - 8] as const);
-  const line = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" ");
-  const area = `${line} L${W} ${H} L0 ${H} Z`;
+  const stepX = allDates.length > 1 ? W / (allDates.length - 1) : W;
+  const toY = (a: number) => H - ((a - min) / span) * (H - 16) - 8;
+  const versionLines = versions
+    .filter((v) => v.points.length >= 1)
+    .map((v) => ({
+      version: v.version,
+      isProd: v.version === acc.modelVersion,
+      d: v.points
+        .map(
+          (p, i) =>
+            `${i === 0 ? "M" : "L"}${((xIndex.get(p.date) ?? 0) * stepX).toFixed(1)} ${toY(p.accuracy).toFixed(1)}`,
+        )
+        .join(" "),
+    }));
 
   const labels: { k: Label; name: string }[] = [
     { k: "tang", name: "Tăng" },
@@ -104,19 +119,36 @@ export default async function AccuracyPage() {
         <div className="mt-6 bezel-shell">
           <div className="bezel-core p-6 md:p-8">
             <h2 className="mb-6 font-display text-lg font-semibold text-white">
-              Độ chính xác cuộn · 30 phiên
+              Độ chính xác cuộn · 30 phiên · theo version
             </h2>
-            {hasSeries ? (
-              <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="acc-fill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#e8c39e" stopOpacity="0.2" />
-                    <stop offset="100%" stopColor="#e8c39e" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <path d={area} fill="url(#acc-fill)" />
-                <path d={line} fill="none" stroke="#e8c39e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+            {hasChart ? (
+              <>
+                <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
+                  {versionLines.map((v) => (
+                    <path
+                      key={v.version}
+                      d={v.d}
+                      fill="none"
+                      stroke={v.isProd ? "#e8c39e" : "rgba(255,255,255,0.4)"}
+                      strokeWidth={v.isProd ? 2 : 1.5}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  ))}
+                </svg>
+                <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2">
+                  {versionLines.map((v) => (
+                    <span key={v.version} className="flex items-center gap-2 text-xs text-white/65">
+                      <span
+                        className="inline-block h-2 w-3 rounded-full"
+                        style={{ backgroundColor: v.isProd ? "#e8c39e" : "rgba(255,255,255,0.4)" }}
+                      />
+                      {v.version}
+                      {v.isProd && " (production)"}
+                    </span>
+                  ))}
+                </div>
+              </>
             ) : (
               <p className="py-10 text-center text-sm text-white/50">
                 Chưa đủ kết quả thực tế để vẽ — biểu đồ xuất hiện sau vài phiên giao dịch.

@@ -321,6 +321,35 @@ async def get_news(session: AsyncSession, symbol: str, limit: int = 10) -> list[
     ]
 
 
+def _rolling_by_version(preds, actual_map: dict, window: int = 30) -> list[dict]:
+    """Accuracy TRƯỢT `window` phiên cho từng model version (M10 — chart drift theo version).
+
+    Mỗi điểm = accuracy gộp (sample-weighted) trên `window` phiên gần nhất tính tới phiên đó.
+    Version production xếp trước stub_v0 để frontend tô gold cho đường chính.
+    """
+    from collections import defaultdict
+
+    per_session: dict[str, dict] = defaultdict(lambda: defaultdict(list))
+    for r in preds:
+        actual = actual_map.get((r.stock_id, r.prediction_date))
+        if actual is None:
+            continue
+        per_session[r.model_version][r.prediction_date].append(actual == r.label)
+
+    out = []
+    for ver, sess_map in per_session.items():
+        counts = [(d, sum(sess_map[d]), len(sess_map[d])) for d in sorted(sess_map)]
+        points = []
+        for i in range(len(counts)):
+            lo = max(0, i - window + 1)
+            corr = sum(c for _, c, _ in counts[lo : i + 1])
+            tot = sum(t for _, _, t in counts[lo : i + 1])
+            points.append({"date": counts[i][0].isoformat(), "accuracy": round(corr / tot, 4)})
+        out.append({"version": ver, "points": points})
+    out.sort(key=lambda v: (v["version"] == _STUB_VERSION, v["version"]))
+    return out
+
+
 async def get_accuracy(session: AsyncSession) -> dict:
     """So predictions vs actual_results → AccuracySummary khớp frontend.
 
@@ -388,6 +417,7 @@ async def get_accuracy(session: AsyncSession) -> dict:
             "last30": 0.0,
             "byLabel": {"tang": 0.0, "giam": 0.0, "di_ngang": 0.0},
             "series": [],
+            "rollingByVersion": [],
             "modelVersion": current_version or "n/a",
             "coverage": coverage,
             "precisionActionable": precision_actionable,
@@ -424,6 +454,7 @@ async def get_accuracy(session: AsyncSession) -> dict:
         "last30": last30,
         "byLabel": by_label_acc,
         "series": series,
+        "rollingByVersion": _rolling_by_version(preds, actual_map),
         "modelVersion": current_version or "n/a",
         "coverage": coverage,
         "precisionActionable": precision_actionable,
