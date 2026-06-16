@@ -4,7 +4,8 @@ Dùng SQLite in-memory (conftest). Kiểm: exchange map HSX→HOSE, changePct, s
 accuracy stub-aware (rỗng khi chưa có actual_results), accuracy tính đúng khi có actual.
 """
 
-from datetime import date
+from datetime import date, timedelta
+from types import SimpleNamespace
 
 from models.database import (
     ActualResult,
@@ -171,6 +172,38 @@ async def test_accuracy_computed_with_actuals(session_factory):
     assert acc["overall"] == 1.0
     assert acc["byLabel"]["tang"] == 1.0
     assert len(acc["series"]) == 1
+
+
+def test_rolling_by_version_shape_and_sort():
+    """_rolling_by_version: per-session accuracy, version production xếp trước stub_v0."""
+    base = date(2026, 6, 1)
+    preds = []
+    actual_map = {}
+    for d in (base, base + timedelta(days=1)):  # lgbm_v4: 2 phiên đúng
+        preds.append(
+            SimpleNamespace(stock_id=1, prediction_date=d, label="tang", model_version="lgbm_v4")
+        )
+        actual_map[(1, d)] = "tang"
+    preds.append(  # stub_v0: 1 phiên sai
+        SimpleNamespace(stock_id=2, prediction_date=base, label="tang", model_version="stub_v0")
+    )
+    actual_map[(2, base)] = "giam"
+
+    out = read_api._rolling_by_version(preds, actual_map)
+    assert [v["version"] for v in out] == ["lgbm_v4", "stub_v0"]  # production trước stub
+    assert [p["accuracy"] for p in out[0]["points"]] == [1.0, 1.0]
+    assert out[1]["points"][0]["accuracy"] == 0.0
+
+
+async def test_accuracy_computed_includes_rolling_by_version(session_factory):
+    sid = await _seed(session_factory)  # prediction stub_v0 @ 9/6 label=tang
+    async with session_factory() as s:
+        s.add(ActualResult(stock_id=sid, date=date(2026, 6, 9), label="tang"))
+        await s.commit()
+        acc = await read_api.get_accuracy(s)
+    assert acc["rollingByVersion"] == [
+        {"version": "stub_v0", "points": [{"date": "2026-06-09", "accuracy": 1.0}]}
+    ]
 
 
 async def test_accuracy_join_by_prediction_date_not_target(session_factory):

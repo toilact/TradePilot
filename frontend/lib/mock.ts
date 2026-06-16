@@ -84,4 +84,28 @@ export const MOCK_ACCURACY: AccuracySummary = {
       accuracy: Math.round((0.55 + Math.sin(i / 4) * 0.07 + i * 0.001) * 1000) / 1000,
     };
   }),
+  rollingByVersion: [
+    {
+      version: "v0.1.0", // = modelVersion → đường gold (production)
+      points: Array.from({ length: 30 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (29 - i));
+        return {
+          date: d.toISOString().slice(0, 10),
+          accuracy: Math.round((0.55 + Math.sin(i / 4) * 0.06 + i * 0.0015) * 1000) / 1000,
+        };
+      }),
+    },
+    {
+      version: "v0.0.9", // version cũ → đường mờ
+      points: Array.from({ length: 18 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (35 - i));
+        return {
+          date: d.toISOString().slice(0, 10),
+          accuracy: Math.round((0.5 + Math.cos(i / 5) * 0.05) * 1000) / 1000,
+        };
+      }),
+    },
+  ],
 };

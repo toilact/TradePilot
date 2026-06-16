@@ -8,7 +8,9 @@ Thứ tự (mỗi bước try/except RIÊNG — 1 bước fail không giết pip
   4. sentiment       — score_news (PhoBERT nếu có artifact, không thì 0.0) + daily_sentiment
   5. inference       — lgbm_v4 + gating (cần `uv run --group inference`)
   6. cache_bust      — xoá Redis `tp:*` để web phục vụ data mới ngay (M6; không Redis → skip)
-Cuối cùng: Telegram tổng kết (kèm ⚠️ khi crawl 0 tin / ❌ khi bước fail).
+  7. drift_monitor   — chấm drift model production rolling 30 phiên (M10); alert Telegram RIÊNG
+                       khi drift, không bao giờ giết pipeline (drift = cần retrain, không phải lỗi)
+Cuối cùng: Telegram tổng kết (kèm ⚠️ khi crawl 0 tin / drift / ❌ khi bước fail).
 
 Bất biến chống leakage: inference ngày T chỉ dùng tin published_at ≤ 16:00 phiên T.
 Ngày nghỉ lễ: vẫn chạy hết — các bước idempotent (không giá mới → inference ghi lại
@@ -148,6 +150,27 @@ async def _step_cache_bust() -> StepResult:
     return StepResult("cache_bust", True, f"xoá {deleted} key")
 
 
+async def _step_drift_monitor() -> StepResult:
+    """Giám sát drift model production trên rolling 30 phiên (M10 — model governance).
+
+    `run_drift_check` tự gửi Telegram RIÊNG khi phát hiện drift. Bước này KHÔNG bao giờ
+    fail pipeline — drift là tín hiệu "cần retrain", không phải lỗi vận hành; chỉ gắn
+    ⚠️ warning vào tổng kết để người vận hành thấy ngay.
+    """
+    from services.drift_monitor import run_drift_check
+
+    report = await run_drift_check()
+    if report.drift_detected:
+        detail = "DRIFT — cần retrain: " + "; ".join(report.reasons)
+    elif report.notes:
+        detail = "chưa đủ mẫu chấm: " + "; ".join(report.notes)
+    else:
+        prec = report.precision_on_actionable
+        suffix = f", precision dám-đoán {prec:.1%}" if prec is not None else ""
+        detail = f"ổn — {report.n_sessions} phiên{suffix}"
+    return StepResult("drift_monitor", True, detail, warning=report.drift_detected)
+
+
 PIPELINE_STEPS = (
     _step_prices,
     _step_actual_results,
@@ -155,6 +178,7 @@ PIPELINE_STEPS = (
     _step_sentiment,
     _step_inference,
     _step_cache_bust,
+    _step_drift_monitor,
 )
 
 

@@ -6,11 +6,13 @@ Kiểm tra: http://localhost:8000/health  và  http://localhost:8000/docs
 
 import time
 from contextlib import asynccontextmanager
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import structlog
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
@@ -25,7 +27,25 @@ if init_sentry():
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402 — sau Sentry init (docs Sentry)
 
 from api import auth, news, predictions, stocks  # noqa: E402
-from models.database import get_session  # noqa: E402
+from models.database import Prediction, get_session  # noqa: E402
+
+TZ_VN = ZoneInfo("Asia/Ho_Chi_Minh")
+# Watchdog freshness (M10): cho phép trễ tối đa 2 ngày giao dịch (lưới cho 1 phiên lỡ + cuối tuần).
+FRESHNESS_MAX_TRADING_DAYS = 2
+
+
+def _trading_days_between(latest: date, today: date) -> int:
+    """Số ngày giao dịch (T2–T6) từ `latest` (loại trừ) tới `today` (gồm cả).
+
+    Bỏ cuối tuần; KHÔNG trừ ngày lễ (chấp nhận false-positive hiếm — đủ cho solo, watchdog
+    chỉ cần bắt được "Mac quên chạy" vài ngày liền)."""
+    days = 0
+    d = latest + timedelta(days=1)
+    while d <= today:
+        if d.weekday() < 5:
+            days += 1
+        d += timedelta(days=1)
+    return days
 
 
 @asynccontextmanager
@@ -92,11 +112,16 @@ async def health():
 
 
 @app.get("/healthz")
-async def healthz(session: AsyncSession = Depends(get_session)):  # noqa: B008 — pattern FastAPI
-    """Health check production (M7): version + DB ping.
+async def healthz(
+    check: str | None = None,
+    session: AsyncSession = Depends(get_session),  # noqa: B008 — pattern FastAPI
+):
+    """Health check production (M7) + watchdog freshness (M10).
 
-    Render health check + cron-job.org keep-alive gọi route này.
-    DB chết → 503 để hệ thống ping bên ngoài báo động được.
+    Mặc định (Render health check): version + DB ping; DB chết → 503.
+    `?check=freshness` (cron-job.org gọi): thêm kiểm tra prediction mới nhất — quá
+    FRESHNESS_MAX_TRADING_DAYS ngày giao dịch → 503 (Mac quên chạy pipeline → báo động).
+    GIỮ default KHÔNG đổi để prediction cũ không khiến Render kill service.
     """
     try:
         await session.execute(text("SELECT 1"))
@@ -109,4 +134,29 @@ async def healthz(session: AsyncSession = Depends(get_session)):  # noqa: B008 �
         "version": app.version,
         "db": db_status,
     }
-    return JSONResponse(body, status_code=200 if db_status == "ok" else 503)
+    if db_status != "ok":
+        return JSONResponse(body, status_code=503)
+
+    if check == "freshness":
+        from services.inference import MODEL_VERSION
+
+        latest = (
+            await session.execute(
+                select(func.max(Prediction.prediction_date)).where(
+                    Prediction.model_version == MODEL_VERSION
+                )
+            )
+        ).scalar()
+        today = datetime.now(TZ_VN).date()
+        stale_days = _trading_days_between(latest, today) if latest is not None else None
+        fresh = latest is not None and stale_days <= FRESHNESS_MAX_TRADING_DAYS
+        body["freshness"] = {
+            "latestPrediction": latest.isoformat() if latest else None,
+            "tradingDaysStale": stale_days,
+            "fresh": fresh,
+        }
+        if not fresh:
+            body["status"] = "stale"
+            return JSONResponse(body, status_code=503)
+
+    return JSONResponse(body, status_code=200)
